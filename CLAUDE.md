@@ -62,6 +62,10 @@ it before proceeding.
 - **Calculation logic location:** all math lives in `lib/calc.ts` as
   pure functions with no React dependencies, so it can be unit-tested
   independently.
+- **Feedback submission:** uses a Next.js API route that proxies to a
+  Google Apps Script webhook stored in `FEEDBACK_WEBHOOK_URL` env
+  variable. The Apps Script appends rows to a Google Sheet. URL is not
+  in the public bundle — only accessible server-side.
 
 ## Scope guardrails
 
