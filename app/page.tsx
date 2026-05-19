@@ -1,23 +1,43 @@
 "use client";
 
+import { useState } from "react";
 import InputForm from "@/components/InputForm";
+import ResultsPanel from "@/components/ResultsPanel";
 import type { HouseholdState } from "@/lib/calc";
 
+const INITIAL_STATE: HouseholdState = {
+  currentAge: 0,
+  retirementAge: 65,
+  annualIncome: 0,
+  annualSavings: 0,
+  currentAssets: 0,
+  retirementSpending: 0,
+  expectedReturn: 0.07,
+  socialSecurityIncome: 0,
+};
+
 export default function Home() {
+  const [state, setState] = useState<HouseholdState>(INITIAL_STATE);
+
   return (
     <main className="min-h-screen bg-gray-50 font-[family-name:var(--font-geist-sans)]">
-      <div className="max-w-lg mx-auto px-6 py-12">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
+      <div className="mx-auto max-w-6xl px-6 py-12">
+        <h1 className="mb-1 text-2xl font-bold text-gray-900">
           Retirement Readiness
         </h1>
-        <p className="text-sm text-gray-500 mb-8">
+        <p className="mb-8 text-sm text-gray-500">
           Fill in your numbers to see your retirement outlook.
         </p>
-        <InputForm
-          onChange={(state: HouseholdState) => {
-            console.log("HouseholdState:", state);
-          }}
-        />
+
+        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+          <div className="rounded-xl border border-gray-200 bg-white p-6">
+            <InputForm onChange={setState} />
+          </div>
+
+          <div className="lg:sticky lg:top-8">
+            <ResultsPanel state={state} />
+          </div>
+        </div>
       </div>
     </main>
   );
