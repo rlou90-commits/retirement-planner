@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import {
   computeFV,
   computeRequiredCapital,
@@ -15,6 +14,7 @@ import {
   getCashFlowPowerExplanation,
   getTimelineFeasibilityExplanation,
 } from "@/lib/categoryExplanations";
+import { getActionDescription } from "@/lib/actionDescriptions";
 
 // ---- guards & helpers ------------------------------------------------------
 
@@ -131,35 +131,45 @@ function CategoryCard({
 
 // ---- ActionCard ------------------------------------------------------------
 
-function ActionCard({ action, rank }: { action: ActionResult; rank: number }) {
+function ActionCard({
+  action,
+  state,
+}: {
+  action: ActionResult;
+  state: HouseholdState;
+}) {
+  const { verbPhrase, magnitude, description } = getActionDescription(action.name, state);
   const isIncome = action.name === "Increase income";
-  const sign = action.impact >= 0 ? "+" : "";
+  const impact = (Math.round(action.impact * 100) / 100).toFixed(2);
 
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
-      <div className="flex gap-3">
-        <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
-          {rank}
-        </span>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-900">{action.name}</p>
-          <p className="mt-0.5 text-xs text-gray-500">{action.description}</p>
-          <p className="mt-1.5 text-xs text-gray-600">
-            If you {action.name.toLowerCase()}, your sufficiency ratio improves from{" "}
-            <span className="font-medium">{action.originalRatio.toFixed(2)}</span>
-            {" → "}
-            <span className="font-medium">{action.newRatio.toFixed(2)}</span>{" "}
-            <span className="font-semibold text-green-600">
-              ({sign}{action.impact.toFixed(2)})
-            </span>
-          </p>
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      {/* Top row: headline (left) + impact (right) */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="text-sm text-gray-700">
+            If you{" "}
+            <strong className="font-semibold text-gray-900">{verbPhrase}</strong>{" "}
+            <span className="text-gray-500">{magnitude}</span>
+          </span>
           {isIncome && (
-            <p className="mt-1 text-xs italic text-gray-400">
-              Assumes your savings rate stays the same
-            </p>
+            <div className="group relative flex-shrink-0">
+              <span className="flex h-4 w-4 cursor-default items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 hover:border-gray-400 hover:text-gray-500">
+                i
+              </span>
+              <div className="pointer-events-none absolute bottom-full left-0 z-10 mb-2 hidden w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg group-hover:block">
+                Assumes your savings rate stays constant — i.e., you save the same percentage of your new, higher income.
+              </div>
+            </div>
           )}
         </div>
+        <p className="flex-shrink-0 text-2xl font-semibold tabular-nums text-emerald-600">
+          +{impact}
+        </p>
       </div>
+
+      {/* Description */}
+      <p className="mt-2 text-sm text-gray-600">{description}</p>
     </div>
   );
 }
@@ -179,8 +189,6 @@ function Placeholder() {
 // ---- main component --------------------------------------------------------
 
 export default function ResultsPanel({ state }: { state: HouseholdState }) {
-  const [showAll, setShowAll] = useState(false);
-
   if (!isValidState(state)) return <Placeholder />;
 
   const fv = computeFV(state);
@@ -257,7 +265,7 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
       </div>
 
       {/* Section 3: Category Cards */}
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <CategoryCard
           name="Savings Strength"
           score={scores.savingsStrength}
@@ -278,22 +286,11 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
         />
       </div>
 
-      {/* Section 4: Actions — unchanged */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Recommended Actions
-        </p>
-        <div className="space-y-3">
-          {actions.slice(0, showAll ? 5 : 3).map((action, i) => (
-            <ActionCard key={action.name} action={action} rank={i + 1} />
-          ))}
-        </div>
-        <button
-          onClick={() => setShowAll((v) => !v)}
-          className="mt-3 text-sm text-blue-600 underline underline-offset-2 hover:text-blue-800"
-        >
-          {showAll ? "Show fewer" : "Show all 5 actions"}
-        </button>
+      {/* Section 4: Action Cards */}
+      <div className="space-y-3">
+        {actions.slice(0, 3).map((action) => (
+          <ActionCard key={action.name} action={action} state={state} />
+        ))}
       </div>
     </div>
   );
