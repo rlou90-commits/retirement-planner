@@ -10,6 +10,11 @@ import {
   simulateActions,
 } from "@/lib/calc";
 import type { HouseholdState, VerdictColor, ActionResult } from "@/lib/calc";
+import {
+  getSavingsStrengthExplanation,
+  getCashFlowPowerExplanation,
+  getTimelineFeasibilityExplanation,
+} from "@/lib/categoryExplanations";
 
 // ---- guards & helpers ------------------------------------------------------
 
@@ -53,13 +58,11 @@ function getSnapshotCopy(ratio: number): string {
 
 // ---- color maps ------------------------------------------------------------
 
-type ColorStyles = { bg: string; text: string; border: string };
-
-const HERO_COLOR: Record<VerdictColor, ColorStyles> = {
-  "green":       { bg: "bg-green-50",   text: "text-green-700",   border: "border-green-200" },
-  "light-green": { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
-  "amber":       { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200" },
-  "red":         { bg: "bg-red-50",     text: "text-red-700",     border: "border-red-200" },
+const LEFT_ACCENT: Record<VerdictColor, string> = {
+  "green":       "bg-green-500",
+  "light-green": "bg-emerald-500",
+  "amber":       "bg-amber-500",
+  "red":         "bg-red-500",
 };
 
 const BADGE_COLOR: Record<VerdictColor, string> = {
@@ -68,6 +71,63 @@ const BADGE_COLOR: Record<VerdictColor, string> = {
   "amber":       "bg-amber-100 text-amber-700",
   "red":         "bg-red-100 text-red-700",
 };
+
+const BAR_COLOR: Record<VerdictColor, string> = {
+  "green":       "bg-green-500",
+  "light-green": "bg-emerald-500",
+  "amber":       "bg-amber-400",
+  "red":         "bg-red-400",
+};
+
+// ---- CategoryCard ----------------------------------------------------------
+
+function CategoryCard({
+  name,
+  score,
+  tooltip,
+  explanation,
+}: {
+  name: string;
+  score: number;
+  tooltip: string;
+  explanation: string;
+}) {
+  const band = scoreBand(score);
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      {/* Title row */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-900">{name}</p>
+        {/* Info icon with hover tooltip */}
+        <div className="group relative">
+          <span className="flex h-4 w-4 cursor-default items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 hover:border-gray-400 hover:text-gray-500">
+            i
+          </span>
+          <div className="pointer-events-none absolute bottom-full right-0 z-10 mb-2 hidden w-56 rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg group-hover:block">
+            {tooltip}
+          </div>
+        </div>
+      </div>
+
+      {/* Large score */}
+      <p className="mt-2 text-4xl font-bold tabular-nums text-gray-900">
+        {Math.round(score)}
+      </p>
+
+      {/* Progress bar */}
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+        <div
+          className={`h-full rounded-full ${BAR_COLOR[band]}`}
+          style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+        />
+      </div>
+
+      {/* Explanatory sentence */}
+      <p className="mt-3 text-xs text-gray-500">{explanation}</p>
+    </div>
+  );
+}
 
 // ---- ActionCard ------------------------------------------------------------
 
@@ -130,82 +190,92 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
   const scores = computeCategoryScores(state);
   const actions = simulateActions(state);
 
-  const heroStyle = HERO_COLOR[verdict.color];
-
-  const categories: { name: string; score: number; note: string }[] = [
-    { name: "Savings Strength",     score: scores.savingsStrength,     note: "Assets vs. age-appropriate benchmark" },
-    { name: "Cash Flow Power",      score: scores.cashFlowPower,       note: "Annual savings rate" },
-    { name: "Timeline Feasibility", score: scores.timelineFeasibility, note: "Closability of gap over remaining years" },
-  ];
 
   return (
     <div className="space-y-4">
-      {/* Section 1: Verdict, ratio, snapshot copy */}
-      <div className={`rounded-xl border p-6 ${heroStyle.bg} ${heroStyle.border}`}>
-        <p className={`text-2xl font-bold ${heroStyle.text}`}>{verdict.label}</p>
-        <p className="mt-1 text-sm text-gray-500">
-          Sufficiency ratio: {ratio.toFixed(2)}
-        </p>
-        <p className="mt-3 text-sm text-gray-600">{getSnapshotCopy(ratio)}</p>
-      </div>
+      {/* Sections 1 + 2: merged card with colored left accent */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex">
+          {/* Colored left accent bar */}
+          <div className={`w-1 flex-shrink-0 ${LEFT_ACCENT[verdict.color]}`} />
 
-      {/* Section 2: Three-column numeric snapshot */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
-              Projected at Retirement
-            </p>
-            <p className="text-lg font-semibold tabular-nums text-gray-900">
-              {formatDollars(fv)}
-            </p>
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
-              Required Capital
-            </p>
-            <p className="text-lg font-semibold tabular-nums text-gray-900">
-              {formatDollars(required)}
-            </p>
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
-              {fv >= required ? "Surplus" : "Gap"}
-            </p>
-            <p
-              className={`text-lg font-semibold tabular-nums ${
-                fv >= required ? "text-green-600" : "text-red-600"
-              }`}
-            >
-              {formatDollars(Math.abs(fv - required))}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Section 3: Category Scores — unchanged */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Category Scores
-        </p>
-        <div className="space-y-2">
-          {categories.map(({ name, score, note }) => (
-            <div
-              key={name}
-              className="flex items-center justify-between rounded-lg border border-gray-100 px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-medium text-gray-900">{name}</p>
-                <p className="text-xs text-gray-400">{note}</p>
+          <div className="flex-1">
+            {/* Top zone: verdict + ratio + copy */}
+            <div className="px-5 pb-4 pt-5">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                Sufficiency Ratio
+              </p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-4xl font-bold tabular-nums text-gray-900">
+                  {ratio.toFixed(2)}
+                </p>
+                <span
+                  className={`rounded-full px-3 py-1 text-sm font-semibold ${BADGE_COLOR[verdict.color]}`}
+                >
+                  {verdict.label}
+                </span>
               </div>
-              <span
-                className={`ml-3 flex-shrink-0 rounded-full px-3 py-1 text-sm font-semibold ${BADGE_COLOR[scoreBand(score)]}`}
-              >
-                {Math.round(score)}
-              </span>
+              <p className="mt-3 text-sm text-gray-600">{getSnapshotCopy(ratio)}</p>
             </div>
-          ))}
+
+            {/* Divider */}
+            <div className="border-t border-gray-100" />
+
+            {/* Bottom zone: three-column numeric snapshot */}
+            <div className="grid grid-cols-3 gap-4 px-5 py-4">
+              <div>
+                <p className="mb-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Projected
+                </p>
+                <p className="text-lg font-semibold tabular-nums text-gray-900">
+                  {formatDollars(fv)}
+                </p>
+              </div>
+              <div>
+                <p className="mb-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  Required
+                </p>
+                <p className="text-lg font-semibold tabular-nums text-gray-900">
+                  {formatDollars(required)}
+                </p>
+              </div>
+              <div>
+                <p className="mb-1 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-gray-400">
+                  {fv >= required ? "Surplus" : "Gap"}
+                </p>
+                <p
+                  className={`text-lg font-semibold tabular-nums ${
+                    fv >= required ? "text-green-600" : "text-red-600"
+                  }`}
+                >
+                  {formatDollars(Math.abs(fv - required))}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Section 3: Category Cards */}
+      <div className="space-y-3">
+        <CategoryCard
+          name="Savings Strength"
+          score={scores.savingsStrength}
+          tooltip="How your current savings compare to typical benchmarks for your age."
+          explanation={getSavingsStrengthExplanation(state)}
+        />
+        <CategoryCard
+          name="Cash Flow Power"
+          score={scores.cashFlowPower}
+          tooltip="What percentage of your income you're saving each year."
+          explanation={getCashFlowPowerExplanation(state)}
+        />
+        <CategoryCard
+          name="Timeline Feasibility"
+          score={scores.timelineFeasibility}
+          tooltip="Whether your retirement timeline gives your savings enough room to close the gap."
+          explanation={getTimelineFeasibilityExplanation(state)}
+        />
       </div>
 
       {/* Section 4: Actions — unchanged */}

@@ -44,7 +44,7 @@ const SAVINGS_BENCHMARKS: [number, number][] = [
   [60, 8],
 ];
 
-function getBenchmarkMultiple(age: number): number {
+export function getBenchmarkMultiple(age: number): number {
   if (age <= 30) return 1;
   if (age >= 60) return 8;
   for (let i = 0; i < SAVINGS_BENCHMARKS.length - 1; i++) {
@@ -179,4 +179,26 @@ export function simulateActions(state: HouseholdState): ActionResult[] {
   });
 
   return results.sort((a, b) => b.impact - a.impact);
+}
+
+// Returns the total years (from today) needed at the current savings pace to
+// reach requiredCapital, solving FV(n) = requiredCapital for n.
+export function computeYearsToCloseGap(state: HouseholdState): number {
+  const required = computeRequiredCapital(state);
+  const { currentAssets, annualSavings, expectedReturn: r } = state;
+
+  if (r === 0) {
+    if (annualSavings <= 0) return Infinity;
+    return (required - currentAssets) / annualSavings;
+  }
+
+  // FV(n) = (currentAssets + pmt/r)*(1+r)^n - pmt/r = required
+  // => n = log((required + pmt/r) / (currentAssets + pmt/r)) / log(1+r)
+  const pmt_r = annualSavings / r;
+  const numerator = required + pmt_r;
+  const denominator = currentAssets + pmt_r;
+
+  if (denominator <= 0 || numerator <= 0) return Infinity;
+
+  return Math.log(numerator / denominator) / Math.log(1 + r);
 }
