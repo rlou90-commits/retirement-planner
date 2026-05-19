@@ -19,7 +19,7 @@ function saveMore(state: HouseholdState): ActionDescription {
   const extraMonthly = extraAnnual / 12;
   return {
     verbPhrase: "save more",
-    magnitude: "(+10%)",
+    magnitude: "(+10% to savings)",
     description: `Save an additional ${fmt(extraAnnual)} per year — roughly ${fmt(extraMonthly)} more per month — on top of your current savings.`,
   };
 }
@@ -29,7 +29,7 @@ function saveSignificantlyMore(state: HouseholdState): ActionDescription {
   const extraMonthly = extraAnnual / 12;
   return {
     verbPhrase: "save significantly more",
-    magnitude: "(+25%)",
+    magnitude: "(+25% to savings)",
     description: `Save an additional ${fmt(extraAnnual)} per year — roughly ${fmt(extraMonthly)} more per month — on top of your current savings.`,
   };
 }
@@ -48,7 +48,7 @@ function reduceSpending(state: HouseholdState): ActionDescription {
   const newSpending = state.retirementSpending * 0.85;
   return {
     verbPhrase: "reduce retirement spending",
-    magnitude: "(−15%)",
+    magnitude: "(−15% to spending)",
     description: `Plan to spend ${fmt(newSpending)} per year in retirement instead of ${fmt(state.retirementSpending)}.`,
   };
 }
@@ -58,7 +58,7 @@ function increaseIncome(state: HouseholdState): ActionDescription {
   const extraSavings = state.annualSavings * 0.10;
   return {
     verbPhrase: "increase income",
-    magnitude: "(+10%)",
+    magnitude: "(+10% to income)",
     description: `Boost household income to ${fmt(newIncome)} (10% above current). Adds roughly ${fmt(extraSavings)} to your annual savings at the same rate.`,
   };
 }
