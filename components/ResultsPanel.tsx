@@ -38,6 +38,19 @@ function scoreBand(score: number): VerdictColor {
   return "red";
 }
 
+function getSnapshotCopy(ratio: number): string {
+  if (ratio < 0.80) {
+    return "This is a meaningful gap, but it's also where the levers below have the most leverage. Households in this zone usually move significantly with one or two changes.";
+  }
+  if (ratio < 1.00) {
+    return "You're close to where you need to be. A modest adjustment to one or two inputs above is typically enough to close this kind of gap.";
+  }
+  if (ratio < 1.20) {
+    return "You're positioned well for your goal. The actions below show where you could build cushion if you want more margin.";
+  }
+  return "You're in a strong position. Your trajectory comfortably exceeds what your retirement target requires — the actions below are about optimization, not necessity.";
+}
+
 // ---- color maps ------------------------------------------------------------
 
 type ColorStyles = { bg: string; text: string; border: string };
@@ -56,7 +69,7 @@ const BADGE_COLOR: Record<VerdictColor, string> = {
   "red":         "bg-red-100 text-red-700",
 };
 
-// ---- sub-components --------------------------------------------------------
+// ---- ActionCard ------------------------------------------------------------
 
 function ActionCard({ action, rank }: { action: ActionResult; rank: number }) {
   const isIncome = action.name === "Increase income";
@@ -91,6 +104,8 @@ function ActionCard({ action, rank }: { action: ActionResult; rank: number }) {
   );
 }
 
+// ---- Placeholder -----------------------------------------------------------
+
 function Placeholder() {
   return (
     <div className="flex items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white px-8 py-16">
@@ -118,53 +133,57 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
   const heroStyle = HERO_COLOR[verdict.color];
 
   const categories: { name: string; score: number; note: string }[] = [
-    { name: "Savings Strength",    score: scores.savingsStrength,    note: "Assets vs. age-appropriate benchmark" },
-    { name: "Cash Flow Power",     score: scores.cashFlowPower,      note: "Annual savings rate" },
-    { name: "Timeline Feasibility",score: scores.timelineFeasibility, note: "Closability of gap over remaining years" },
+    { name: "Savings Strength",     score: scores.savingsStrength,     note: "Assets vs. age-appropriate benchmark" },
+    { name: "Cash Flow Power",      score: scores.cashFlowPower,       note: "Annual savings rate" },
+    { name: "Timeline Feasibility", score: scores.timelineFeasibility, note: "Closability of gap over remaining years" },
   ];
 
   return (
     <div className="space-y-4">
-      {/* Section 1: Sufficiency Ratio */}
+      {/* Section 1: Verdict, ratio, snapshot copy */}
       <div className={`rounded-xl border p-6 ${heroStyle.bg} ${heroStyle.border}`}>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-          Sufficiency Ratio
+        <p className={`text-2xl font-bold ${heroStyle.text}`}>{verdict.label}</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Sufficiency ratio: {ratio.toFixed(2)}
         </p>
-        <div className="flex items-baseline gap-3">
-          <span className={`text-5xl font-bold tabular-nums ${heroStyle.text}`}>
-            {ratio.toFixed(2)}
-          </span>
-          <span className={`text-sm font-semibold ${heroStyle.text}`}>
-            {verdict.label}
-          </span>
-        </div>
-        <p className="mt-2 text-xs text-gray-500">
-          1.0 = exactly on track · above = surplus · below = gap
-        </p>
+        <p className="mt-3 text-sm text-gray-600">{getSnapshotCopy(ratio)}</p>
       </div>
 
-      {/* Section 2: Projected vs. Required */}
+      {/* Section 2: Three-column numeric snapshot */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          Projected vs. Required
-        </p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <p className="mb-1 text-xs text-gray-500">Projected at retirement</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Projected at Retirement
+            </p>
             <p className="text-lg font-semibold tabular-nums text-gray-900">
               {formatDollars(fv)}
             </p>
           </div>
           <div>
-            <p className="mb-1 text-xs text-gray-500">Capital needed</p>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+              Required Capital
+            </p>
             <p className="text-lg font-semibold tabular-nums text-gray-900">
               {formatDollars(required)}
+            </p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+              {fv >= required ? "Surplus" : "Gap"}
+            </p>
+            <p
+              className={`text-lg font-semibold tabular-nums ${
+                fv >= required ? "text-green-600" : "text-red-600"
+              }`}
+            >
+              {formatDollars(Math.abs(fv - required))}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Section 3: Category Scores */}
+      {/* Section 3: Category Scores — unchanged */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
           Category Scores
@@ -189,7 +208,7 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
         </div>
       </div>
 
-      {/* Section 4: Actions */}
+      {/* Section 4: Actions — unchanged */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
           Recommended Actions
