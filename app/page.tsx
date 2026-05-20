@@ -10,9 +10,9 @@ const INITIAL_STATE: HouseholdState = {
   retirementAge: 65,
   annualIncome: 0,
   annualSavings: 0,
-  currentAssets: 0,
+  assets: { stocks: 0, bonds: 0, cash: 0, realEstate: 0, alternatives: 0 },
+  returns: { stocks: 0.07, bonds: 0.04, cash: 0.015, realEstate: 0.04, alternatives: 0 },
   retirementSpending: 0,
-  expectedReturn: 0.07,
   socialSecurityIncome: 0,
 };
 

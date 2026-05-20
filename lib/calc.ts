@@ -27,8 +27,6 @@ const DEFAULT_RETURNS: AssetReturns = {
 };
 
 // ---- HouseholdState ---------------------------------------------------------
-// V1.5 adds assets/returns; V1 legacy fields kept for backward compat until
-// Session 2 updates the UI layer.
 
 export type HouseholdState = {
   currentAge: number;
@@ -39,15 +37,8 @@ export type HouseholdState = {
   };
   annualIncome: number;
   annualSavings: number;
-
-  // V1.5 asset breakdown (preferred)
   assets?: AssetClasses;
   returns?: AssetReturns;
-
-  // V1 legacy fallbacks (used by InputForm until Session 2 UI migration)
-  currentAssets?: number;
-  expectedReturn?: number;
-
   retirementSpending: number;
   socialSecurityIncome: number;
 };
@@ -87,21 +78,19 @@ export type ActionResult = {
 
 // ---- V1.5 asset helpers -----------------------------------------------------
 
-/** Total dollars across all asset classes. Falls back to legacy currentAssets. */
+/** Total dollars across all asset classes. Returns 0 when no breakdown present. */
 export function totalAssets(state: HouseholdState): number {
-  if (state.assets) {
-    return (
-      state.assets.stocks +
-      state.assets.bonds +
-      state.assets.cash +
-      state.assets.realEstate +
-      state.assets.alternatives
-    );
-  }
-  return state.currentAssets ?? 0;
+  if (!state.assets) return 0;
+  return (
+    state.assets.stocks +
+    state.assets.bonds +
+    state.assets.cash +
+    state.assets.realEstate +
+    state.assets.alternatives
+  );
 }
 
-/** Decimal allocation per class. All zeros when total is 0. */
+/** Decimal allocation per class. All zeros when total is 0 or no assets set. */
 export function allocationPercentages(state: HouseholdState): AssetClasses {
   const total = totalAssets(state);
   if (total === 0 || !state.assets) {
@@ -117,13 +106,13 @@ export function allocationPercentages(state: HouseholdState): AssetClasses {
 }
 
 /**
- * Weighted-average return. Falls back to legacy expectedReturn when no asset
- * breakdown is present. When total assets is 0, defaults to stocks return.
+ * Weighted-average return. When total assets is 0 or no breakdown is present,
+ * defaults to the stocks return (or 7% if no returns object provided).
  */
 export function blendedReturn(state: HouseholdState): number {
-  if (!state.assets) return state.expectedReturn ?? DEFAULT_RETURNS.stocks;
-  const total = totalAssets(state);
   const r = state.returns ?? DEFAULT_RETURNS;
+  if (!state.assets) return r.stocks;
+  const total = totalAssets(state);
   if (total === 0) return r.stocks;
   const alloc = allocationPercentages(state);
   return (

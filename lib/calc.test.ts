@@ -25,12 +25,9 @@ function close(actual: number, expected: number, tolerance = 1.0): void {
   );
 }
 
-// Helper to build a V1.5 state from a single asset value + 7% return
-// (all in stocks) — preserves V1 regression coverage exactly.
+// Helper to build a state from a single asset value at 7% — preserves V1 regression coverage.
 function mkState(
-  base: Omit<HouseholdState, "assets" | "returns" | "currentAssets" | "expectedReturn"> & {
-    currentAssets: number;
-  },
+  base: Omit<HouseholdState, "assets" | "returns"> & { currentAssets: number },
 ): HouseholdState {
   return {
     ...base,
