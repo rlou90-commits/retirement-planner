@@ -67,14 +67,7 @@ it before proceeding.
   variable. The Apps Script appends rows to a Google Sheet. URL is not
   in the public bundle — only accessible server-side.
 - **V1.1 — Two-person households:** V1.1 adds optional partner inputs
-  (age, retirement age). Uses `olderCurrentAge` for benchmarking,
-  `laterRetirementAge` for timeline. Assumes savings and spending
-  constant until later retirement date. Income drop when the first
-  partner retires is not modeled — users adjust "Annual Savings" if
-  circumstances change. Years in retirement calculated as
-  `max(1, 90 − laterRetirementAge)` instead of fixed 25×.
-
-  V1.1 two-person household math:
+  (age, retirement age). V1.1 two-person household math:
 
   - Accumulation period (n): max(userRetirementAge − userCurrentAge,
     partnerRetirementAge − partnerCurrentAge) = time until the
@@ -94,6 +87,26 @@ it before proceeding.
 
   - Income drop when first partner retires is not modeled — users adjust
     "Annual Savings" if circumstances change.
+
+## Methodology lessons
+
+**Multi-actor math:** When a calculation involves multiple people (or any multiple actors), name each
+quantity's real-world meaning before composing the formula. Abstractions like "older age" and "later
+retirement" can be combined in mathematically valid but semantically meaningless ways. Always trace:
+what does this variable represent in the world?
+
+Example: V1.1 originally used `n = laterRetirementAge − olderCurrentAge` for the household accumulation
+period. Both terms looked reasonable, but they often belonged to different people, producing a number
+with no real-world meaning. The correct formula is `n = max(userYears, partnerYears)` — the time until
+the later-retiring person actually retires.
+
+**Testing simplifications:** Test edge cases that intentionally break your simplifying assumptions,
+not just average cases. A formula that gives "close-enough" answers for typical inputs can be
+catastrophically wrong at the extremes.
+
+Example: V1.1's flawed `n` formula gave nearly-correct answers when both partners were similar ages
+(e.g., 45/48), but produced badly wrong results when partners had a significant age gap (e.g., 36/62).
+Testing typical scenarios alone would have hidden the bug; testing the edge case exposed it immediately.
 
 ## Scope guardrails
 
