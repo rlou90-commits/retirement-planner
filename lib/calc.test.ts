@@ -13,8 +13,10 @@ import {
   growthAssetPercentage,
   totalAssets,
   allocationPercentages,
+  computeAssetQualityScore,
   type HouseholdState,
 } from "./calc";
+import { getAssetQualityExplanation } from "./categoryExplanations";
 
 function close(actual: number, expected: number, tolerance = 1.0): void {
   assert(
@@ -268,6 +270,136 @@ function mkState(
   assert(growth < 80, `Expected growth < 80 due to alternatives cap, got ${growth}`);
 
   console.log("✓ Test 6 (growthAssetPercentage with 50% alternatives → capped at 50%):", growth.toFixed(1) + "%");
+}
+
+// ---------------------------------------------------------------------------
+// Tests 7–13: Asset Quality score — 7 stress-test scenarios
+//
+// Shared formula recap:
+//   targetGrowth  = clamp(45 + n, 40, 90)
+//   threshold     = clamp(80 + (n − 15), 70, 95)
+//   gap           = userGrowth − targetGrowth
+//   growthAlign   = gap ≥ 0 ? max(0, 100 − gap×1.5) : max(0, 100 − |gap|×2)
+//   concPenalty   = maxPct ≤ threshold ? 100 : max(0, 100 − (maxPct − threshold)×5)
+//   score         = round(0.7×growthAlign + 0.3×concPenalty)
+// ---------------------------------------------------------------------------
+{
+  type Scenario = {
+    label: string;
+    age: number;
+    retirementAge: number;
+    assets: HouseholdState["assets"];
+    expectedScore: number;
+    expectedSentenceKind: "over-aggressive" | "under-aggressive" | "concentration" | "well-aligned" | "any";
+  };
+
+  const DEF_RETURNS: HouseholdState["returns"] = {
+    stocks: 0.07, bonds: 0.04, cash: 0.015, realEstate: 0.04, alternatives: 0,
+  };
+
+  const scenarios: Scenario[] = [
+    {
+      // n=35, targetGrowth=80, userGrowth=100, gap=+20
+      // growthAlign = max(0, 100−30)=70, threshold=95, maxPct=100(stocks)
+      // concPenalty = max(0, 100−(100−95)×5)=75
+      // score = round(0.7×70 + 0.3×75) = round(71.5) = 72
+      label: "30yo all-stocks",
+      age: 30, retirementAge: 65,
+      assets: { stocks: 100_000, bonds: 0, cash: 0, realEstate: 0, alternatives: 0 },
+      expectedScore: 72,
+      expectedSentenceKind: "over-aggressive",
+    },
+    {
+      // n=35, targetGrowth=80, userGrowth=70, gap=−10
+      // growthAlign = max(0,100−20)=80, threshold=95, maxPct=70(stocks)→concPenalty=100
+      // score = round(0.7×80 + 0.3×100) = round(86) = 86
+      label: "30yo diversified (70/20/10)",
+      age: 30, retirementAge: 65,
+      assets: { stocks: 70_000, bonds: 20_000, cash: 10_000, realEstate: 0, alternatives: 0 },
+      expectedScore: 86,
+      expectedSentenceKind: "under-aggressive",
+    },
+    {
+      // n=20, targetGrowth=65, userGrowth=60, gap=−5
+      // growthAlign=max(0,100−10)=90, threshold=85, maxPct=60(stocks)→concPenalty=100
+      // score = round(0.7×90 + 0.3×100) = 93
+      label: "45yo sensible (60/30/10)",
+      age: 45, retirementAge: 65,
+      assets: { stocks: 60_000, bonds: 30_000, cash: 10_000, realEstate: 0, alternatives: 0 },
+      expectedScore: 93,
+      expectedSentenceKind: "under-aggressive",
+    },
+    {
+      // n=10, targetGrowth=55, userGrowth=20, gap=−35
+      // growthAlign=max(0,100−70)=30, threshold=75, maxPct=60(bonds)→concPenalty=100
+      // score = round(0.7×30 + 0.3×100) = round(51) = 51
+      label: "55yo over-conservative (20/60/20)",
+      age: 55, retirementAge: 65,
+      assets: { stocks: 20_000, bonds: 60_000, cash: 20_000, realEstate: 0, alternatives: 0 },
+      expectedScore: 51,
+      expectedSentenceKind: "under-aggressive",
+    },
+    {
+      // n=5, targetGrowth=50, userGrowth=95, gap=+45
+      // growthAlign=max(0,100−67.5)=32.5, threshold=70, maxPct=95(stocks)
+      // concPenalty=max(0,100−(95−70)×5)=max(0,−25)=0
+      // score = round(0.7×32.5 + 0.3×0) = round(22.75) = 23
+      label: "60yo concentrated stocks (95/0/5)",
+      age: 60, retirementAge: 65,
+      assets: { stocks: 95_000, bonds: 0, cash: 5_000, realEstate: 0, alternatives: 0 },
+      expectedScore: 23,
+      expectedSentenceKind: "over-aggressive",
+    },
+    {
+      // n=20, targetGrowth=65, userGrowth=(40+min(50,20))×100=60, gap=−5
+      // growthAlign=90, threshold=85, maxPct=50(alternatives)→concPenalty=100
+      // score = round(0.7×90 + 0.3×100) = 93
+      label: "45yo alternatives-heavy (40/10/0/0/50)",
+      age: 45, retirementAge: 65,
+      assets: { stocks: 40_000, bonds: 10_000, cash: 0, realEstate: 0, alternatives: 50_000 },
+      expectedScore: 93,
+      expectedSentenceKind: "under-aggressive",
+    },
+    {
+      label: "Zero assets edge case",
+      age: 40, retirementAge: 65,
+      assets: { stocks: 0, bonds: 0, cash: 0, realEstate: 0, alternatives: 0 },
+      expectedScore: 0,
+      expectedSentenceKind: "any",
+    },
+  ];
+
+  for (const sc of scenarios) {
+    const state: HouseholdState = {
+      currentAge: sc.age, retirementAge: sc.retirementAge,
+      annualIncome: 100_000, annualSavings: 15_000,
+      assets: sc.assets!, returns: DEF_RETURNS,
+      retirementSpending: 70_000, socialSecurityIncome: 0,
+    };
+
+    const result = computeAssetQualityScore(state);
+    assert.equal(
+      result.score,
+      sc.expectedScore,
+      `${sc.label}: expected score ${sc.expectedScore}, got ${result.score}`,
+    );
+
+    // Verify explanation returns the expected sentence kind (except "any")
+    if (sc.expectedSentenceKind !== "any") {
+      const { sentence } = getAssetQualityExplanation(state);
+      let kindMatch = false;
+      if (sc.expectedSentenceKind === "over-aggressive") kindMatch = sentence.includes("above the");
+      if (sc.expectedSentenceKind === "under-aggressive") kindMatch = sentence.includes("below the");
+      if (sc.expectedSentenceKind === "concentration") kindMatch = sentence.includes("Diversification");
+      if (sc.expectedSentenceKind === "well-aligned") kindMatch = sentence.includes("well-aligned");
+      assert(
+        kindMatch,
+        `${sc.label}: expected "${sc.expectedSentenceKind}" sentence, got: "${sentence}"`,
+      );
+    }
+
+    console.log(`✓ Test Asset Quality (${sc.label}): score = ${result.score}`);
+  }
 }
 
 console.log("\nAll tests passed.");

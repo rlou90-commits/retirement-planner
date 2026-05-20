@@ -63,6 +63,17 @@ export type CategoryScores = {
   savingsStrength: number;
   cashFlowPower: number;
   timelineFeasibility: number;
+  assetQuality: number;
+};
+
+export type AssetQualityBreakdown = {
+  score: number;
+  growthAlignment: number;
+  concentrationPenalty: number;
+  targetGrowth: number;
+  userGrowth: number;
+  threshold: number;
+  dominantClass: { name: string; percentage: number };
 };
 
 export type ActionResult = {
@@ -248,7 +259,81 @@ export function computeCategoryScores(state: HouseholdState): CategoryScores {
     timelineFeasibility = Math.max(0, 100 - asPercentOfIncome * 500);
   }
 
-  return { savingsStrength, cashFlowPower, timelineFeasibility };
+  const assetQuality = computeAssetQualityScore(state).score;
+
+  return { savingsStrength, cashFlowPower, timelineFeasibility, assetQuality };
+}
+
+// Asset class name map for human-readable output
+const CLASS_NAMES: Record<keyof AssetClasses, string> = {
+  stocks: "Stocks",
+  bonds: "Bonds",
+  cash: "Cash",
+  realEstate: "Real Estate",
+  alternatives: "Alternatives",
+};
+
+export function computeAssetQualityScore(state: HouseholdState): AssetQualityBreakdown {
+  const userYears = state.retirementAge - state.currentAge;
+  const partnerYears = state.partner
+    ? state.partner.retirementAge - state.partner.currentAge
+    : userYears;
+  const yearsToRetirement = Math.max(userYears, partnerYears);
+
+  const targetGrowth = Math.max(40, Math.min(90, 45 + yearsToRetirement));
+  const threshold = Math.max(70, Math.min(95, 80 + (yearsToRetirement - 15)));
+
+  // Edge case: no assets entered yet
+  if (totalAssets(state) === 0) {
+    return {
+      score: 0,
+      growthAlignment: 0,
+      concentrationPenalty: 100,
+      targetGrowth,
+      userGrowth: 0,
+      threshold,
+      dominantClass: { name: "Cash", percentage: 0 },
+    };
+  }
+
+  const userGrowth = growthAssetPercentage(state);
+
+  // Asymmetric growth alignment: over-aggressive penalised less than under-aggressive
+  const gap = userGrowth - targetGrowth;
+  const growthAlignment =
+    gap >= 0
+      ? Math.max(0, 100 - gap * 1.5)
+      : Math.max(0, 100 - Math.abs(gap) * 2);
+
+  // Find dominant class
+  const alloc = allocationPercentages(state);
+  let maxPct = 0;
+  let dominantKey: keyof AssetClasses = "cash";
+  for (const key of Object.keys(alloc) as Array<keyof AssetClasses>) {
+    const pct = alloc[key] * 100;
+    if (pct > maxPct) {
+      maxPct = pct;
+      dominantKey = key;
+    }
+  }
+
+  // Concentration penalty: time-scaled threshold
+  const concentrationPenalty =
+    maxPct <= threshold
+      ? 100
+      : Math.max(0, 100 - (maxPct - threshold) * 5);
+
+  const score = Math.round(0.7 * growthAlignment + 0.3 * concentrationPenalty);
+
+  return {
+    score,
+    growthAlignment,
+    concentrationPenalty,
+    targetGrowth,
+    userGrowth,
+    threshold,
+    dominantClass: { name: CLASS_NAMES[dominantKey], percentage: maxPct },
+  };
 }
 
 export function simulateActions(state: HouseholdState): ActionResult[] {
