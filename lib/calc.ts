@@ -3,6 +3,10 @@
 export type HouseholdState = {
   currentAge: number;
   retirementAge: number;
+  partner?: {
+    currentAge: number;
+    retirementAge: number;
+  };
   annualIncome: number;
   annualSavings: number;
   currentAssets: number;
@@ -58,16 +62,34 @@ export function getBenchmarkMultiple(age: number): number {
   return 8;
 }
 
+// Two-person household helpers — fall back to single-person values when no partner.
+function olderCurrentAge(state: HouseholdState): number {
+  return state.partner
+    ? Math.max(state.currentAge, state.partner.currentAge)
+    : state.currentAge;
+}
+
+function laterRetirementAge(state: HouseholdState): number {
+  return state.partner
+    ? Math.max(state.retirementAge, state.partner.retirementAge)
+    : state.retirementAge;
+}
+
 export function computeFV(state: HouseholdState): number {
-  const { currentAge, retirementAge, annualSavings, currentAssets, expectedReturn: r } = state;
-  const n = retirementAge - currentAge;
+  const older = olderCurrentAge(state);
+  const later = laterRetirementAge(state);
+  const n = later - older;
+  const { annualSavings, currentAssets, expectedReturn: r } = state;
   if (r === 0) return currentAssets + annualSavings * n;
   const growth = Math.pow(1 + r, n);
   return currentAssets * growth + annualSavings * (growth - 1) / r;
 }
 
 export function computeRequiredCapital(state: HouseholdState): number {
-  return (state.retirementSpending - state.socialSecurityIncome) * 25;
+  // yearsInRetirement is dynamic: assumes planning to age 90.
+  // Single-person retiring at 65 → max(1, 90-65) = 25, matching V1 behaviour.
+  const yearsInRetirement = Math.max(1, 90 - laterRetirementAge(state));
+  return (state.retirementSpending - state.socialSecurityIncome) * yearsInRetirement;
 }
 
 export function computeSufficiencyRatio(state: HouseholdState): number {
@@ -82,28 +104,24 @@ export function getVerdict(ratio: number): Verdict {
 }
 
 export function computeCategoryScores(state: HouseholdState): CategoryScores {
-  const {
-    currentAge,
-    retirementAge,
-    annualIncome,
-    annualSavings,
-    currentAssets,
-    expectedReturn: r,
-  } = state;
-  const n = retirementAge - currentAge;
+  const { annualIncome, annualSavings, currentAssets, expectedReturn: r } = state;
 
-  // Savings Strength: assets vs age-appropriate income multiple
-  const benchmarkMultiple = getBenchmarkMultiple(currentAge);
+  const older = olderCurrentAge(state);
+  const later = laterRetirementAge(state);
+  const n = later - older;
+
+  // Savings Strength: benchmark against the older partner's age.
+  const benchmarkMultiple = getBenchmarkMultiple(older);
   const savingsStrength = Math.min(
     100,
     ((currentAssets / annualIncome) / benchmarkMultiple) * 100,
   );
 
-  // Cash Flow Power: savings rate vs 20% target
+  // Cash Flow Power: savings rate vs 20% target.
   const savingsRate = annualSavings / annualIncome;
   const cashFlowPower = Math.min(100, (savingsRate / 0.20) * 100);
 
-  // Timeline Feasibility: how hard it would be to close the gap
+  // Timeline Feasibility: how hard it would be to close the gap given remaining time.
   const ratio = computeSufficiencyRatio(state);
   let timelineFeasibility: number;
   if (ratio >= 1.0) {
@@ -143,6 +161,9 @@ export function simulateActions(state: HouseholdState): ActionResult[] {
       apply: (s) => ({ ...s, annualSavings: s.annualSavings * 1.25 }),
     },
     {
+      // Only delays the primary user's retirement age, not the partner's.
+      // In two-person mode this extends the savings horizon only when the
+      // user is the later-retiring partner.
       name: "Delay retirement",
       description: "Push your retirement date back by 3 years",
       apply: (s) => ({ ...s, retirementAge: s.retirementAge + 3 }),

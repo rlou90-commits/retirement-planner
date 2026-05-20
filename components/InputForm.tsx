@@ -16,7 +16,13 @@ type RawFields = {
   expectedReturn: string; // percentage string, e.g. "7" → stored as 0.07
 };
 
+type PartnerRaw = {
+  currentAge: string;
+  retirementAge: string;
+};
+
 type FieldErrors = Partial<Record<keyof RawFields, string>>;
+type PartnerErrors = { currentAge?: string; retirementAge?: string };
 
 // ---- helpers --------------------------------------------------------------
 
@@ -83,10 +89,40 @@ function validate(raw: RawFields): FieldErrors {
   return errors;
 }
 
+function validatePartner(p: PartnerRaw): PartnerErrors {
+  const errors: PartnerErrors = {};
+  const age = parseFloat(p.currentAge);
+  const retAge = parseFloat(p.retirementAge);
+
+  if (p.currentAge !== "") {
+    if (isNaN(age) || age <= 0 || !Number.isInteger(age)) {
+      errors.currentAge = "Enter a whole number greater than 0";
+    } else if (age > 100) {
+      errors.currentAge = "Age must be ≤ 100";
+    }
+  }
+
+  if (p.retirementAge !== "") {
+    if (isNaN(retAge) || retAge <= 0 || !Number.isInteger(retAge)) {
+      errors.retirementAge = "Enter a whole number greater than 0";
+    } else if (retAge > 100) {
+      errors.retirementAge = "Age must be ≤ 100";
+    } else if (!isNaN(age) && retAge <= age) {
+      errors.retirementAge = "Must be greater than partner's current age";
+    }
+  }
+
+  return errors;
+}
+
 // ---- derive HouseholdState ------------------------------------------------
 
-function deriveState(raw: RawFields): HouseholdState {
-  return {
+function buildState(
+  raw: RawFields,
+  hasPartner: boolean,
+  rawPartner: PartnerRaw,
+): HouseholdState {
+  const base: HouseholdState = {
     currentAge: parseFloat(raw.currentAge) || 0,
     retirementAge: parseFloat(raw.retirementAge) || 0,
     annualIncome: parseDollar(raw.annualIncome),
@@ -96,6 +132,21 @@ function deriveState(raw: RawFields): HouseholdState {
     socialSecurityIncome: parseDollar(raw.socialSecurityIncome),
     expectedReturn: (parseFloat(raw.expectedReturn) || 0) / 100,
   };
+
+  if (hasPartner) {
+    const partnerCurrentAge = parseFloat(rawPartner.currentAge);
+    const partnerRetirementAge = parseFloat(rawPartner.retirementAge);
+    if (
+      partnerCurrentAge > 0 &&
+      Number.isInteger(partnerCurrentAge) &&
+      partnerRetirementAge > partnerCurrentAge &&
+      Number.isInteger(partnerRetirementAge)
+    ) {
+      return { ...base, partner: { currentAge: partnerCurrentAge, retirementAge: partnerRetirementAge } };
+    }
+  }
+
+  return base;
 }
 
 // ---- Field sub-component --------------------------------------------------
@@ -179,6 +230,11 @@ const DEFAULTS: RawFields = {
   expectedReturn: "7",
 };
 
+const PARTNER_DEFAULTS: PartnerRaw = {
+  currentAge: "",
+  retirementAge: "65",
+};
+
 export default function InputForm({
   onChange,
 }: {
@@ -186,6 +242,9 @@ export default function InputForm({
 }) {
   const [raw, setRaw] = useState<RawFields>(DEFAULTS);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [hasPartner, setHasPartner] = useState(false);
+  const [rawPartner, setRawPartner] = useState<PartnerRaw>(PARTNER_DEFAULTS);
+  const [partnerErrors, setPartnerErrors] = useState<PartnerErrors>({});
 
   function handleChange(field: keyof RawFields, value: string) {
     const display = (DOLLAR_FIELDS as ReadonlyArray<string>).includes(field)
@@ -193,9 +252,26 @@ export default function InputForm({
       : value;
     const newRaw = { ...raw, [field]: display };
     setRaw(newRaw);
-    const newErrors = validate(newRaw);
-    setErrors(newErrors);
-    onChange(deriveState(newRaw));
+    setErrors(validate(newRaw));
+    onChange(buildState(newRaw, hasPartner, rawPartner));
+  }
+
+  function handlePartnerChange(field: keyof PartnerRaw, value: string) {
+    const newRawPartner = { ...rawPartner, [field]: value };
+    setRawPartner(newRawPartner);
+    setPartnerErrors(validatePartner(newRawPartner));
+    onChange(buildState(raw, true, newRawPartner));
+  }
+
+  function addPartner() {
+    setHasPartner(true);
+  }
+
+  function removePartner() {
+    setHasPartner(false);
+    setRawPartner(PARTNER_DEFAULTS);
+    setPartnerErrors({});
+    onChange(buildState(raw, false, PARTNER_DEFAULTS));
   }
 
   return (
@@ -207,18 +283,66 @@ export default function InputForm({
         </h2>
         <div className="space-y-4">
           <Field
-            label="Current age"
+            label="Your current age"
             value={raw.currentAge}
             error={errors.currentAge}
             placeholder="e.g. 40"
             onChange={(v) => handleChange("currentAge", v)}
           />
           <Field
-            label="Target retirement age"
+            label="Your retire at"
             value={raw.retirementAge}
             error={errors.retirementAge}
             onChange={(v) => handleChange("retirementAge", v)}
           />
+
+          {/* Partner section */}
+          {!hasPartner ? (
+            <button
+              type="button"
+              onClick={addPartner}
+              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4"
+                aria-hidden="true"
+              >
+                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+              </svg>
+              Add partner
+            </button>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Partner
+                </p>
+                <button
+                  type="button"
+                  onClick={removePartner}
+                  className="text-xs text-gray-400 hover:text-red-500"
+                >
+                  Remove
+                </button>
+              </div>
+              <Field
+                label="Partner's current age"
+                value={rawPartner.currentAge}
+                error={partnerErrors.currentAge}
+                placeholder="e.g. 38"
+                onChange={(v) => handlePartnerChange("currentAge", v)}
+              />
+              <Field
+                label="Partner's retire at"
+                value={rawPartner.retirementAge}
+                error={partnerErrors.retirementAge}
+                onChange={(v) => handlePartnerChange("retirementAge", v)}
+              />
+            </div>
+          )}
         </div>
       </section>
 

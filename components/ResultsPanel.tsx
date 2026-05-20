@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   computeFV,
   computeRequiredCapital,
@@ -174,6 +175,47 @@ function ActionCard({
   );
 }
 
+// ---- AssumptionCallout -----------------------------------------------------
+
+function AssumptionCallout({
+  laterAge,
+  onDismiss,
+}: {
+  laterAge: number;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <p className="text-sm font-medium text-amber-900">
+            Savings and spending are assumed constant until age {laterAge}.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">
+            If household circumstances change when the first partner retires, adjust
+            &ldquo;Annual Savings&rdquo; above to reflect the new rate.
+          </p>
+        </div>
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="flex-shrink-0 rounded p-0.5 text-amber-500 hover:bg-amber-100 hover:text-amber-700"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            className="h-4 w-4"
+            aria-hidden="true"
+          >
+            <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Placeholder -----------------------------------------------------------
 
 function Placeholder() {
@@ -189,6 +231,8 @@ function Placeholder() {
 // ---- main component --------------------------------------------------------
 
 export default function ResultsPanel({ state }: { state: HouseholdState }) {
+  const [calloutDismissed, setCalloutDismissed] = useState(false);
+
   if (!isValidState(state)) return <Placeholder />;
 
   const fv = computeFV(state);
@@ -198,6 +242,15 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
   const scores = computeCategoryScores(state);
   const actions = simulateActions(state);
 
+  // Show callout when partner exists and the two timelines differ.
+  const userYears = state.retirementAge - state.currentAge;
+  const partnerYears = state.partner
+    ? state.partner.retirementAge - state.partner.currentAge
+    : userYears;
+  const showCallout = !calloutDismissed && !!state.partner && userYears !== partnerYears;
+  const laterRetAge = state.partner
+    ? Math.max(state.retirementAge, state.partner.retirementAge)
+    : state.retirementAge;
 
   return (
     <div className="space-y-4">
@@ -263,6 +316,14 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
           </div>
         </div>
       </div>
+
+      {/* Assumption callout — only when partner timelines differ */}
+      {showCallout && (
+        <AssumptionCallout
+          laterAge={laterRetAge}
+          onDismiss={() => setCalloutDismissed(true)}
+        />
+      )}
 
       {/* Section 3: Category Cards */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

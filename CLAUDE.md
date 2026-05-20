@@ -66,6 +66,20 @@ it before proceeding.
   Google Apps Script webhook stored in `FEEDBACK_WEBHOOK_URL` env
   variable. The Apps Script appends rows to a Google Sheet. URL is not
   in the public bundle — only accessible server-side.
+- **V1.1 — Two-person households:** V1.1 adds optional partner inputs
+  (age, retirement age). Uses `olderCurrentAge` for benchmarking,
+  `laterRetirementAge` for timeline. Assumes savings and spending
+  constant until later retirement date. Income drop when the first
+  partner retires is not modeled — users adjust "Annual Savings" if
+  circumstances change. Years in retirement calculated as
+  `max(1, 90 − laterRetirementAge)` instead of fixed 25×.
+
+  Note on callout logic: The assumption callout appears when retirement
+  *timelines* differ (i.e., `yearsToRetirement_A ≠ yearsToRetirement_B`),
+  not when retirement ages differ. This is because the assumption
+  violation occurs specifically when one partner retires while the other
+  is still working and saving. Absolute retirement ages (65 vs 70) can
+  differ while timelines remain aligned (both 20 years away).
 
 ## Scope guardrails
 
