@@ -194,9 +194,6 @@ function ActionCard({
           )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
-          <p className={`text-2xl font-semibold tabular-nums ${impactColor}`}>
-            {impactDisplay}
-          </p>
           {isDiversify && (
             <InfoTooltip
               text="This impact reflects an Asset Quality score improvement, not a sufficiency ratio change."
@@ -204,6 +201,9 @@ function ActionCard({
               position="right"
             />
           )}
+          <p className={`text-2xl font-semibold tabular-nums ${impactColor}`}>
+            {impactDisplay}
+          </p>
         </div>
       </div>
 
