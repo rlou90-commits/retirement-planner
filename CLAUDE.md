@@ -88,6 +88,36 @@ it before proceeding.
   - Income drop when first partner retires is not modeled — users adjust
     "Annual Savings" if circumstances change.
 
+## V1.5 math notes (Session 1 — lib only; UI update in Session 2)
+
+- **Asset model:** `HouseholdState` now carries `assets: AssetClasses` and `returns: AssetReturns`
+  instead of `currentAssets` / `expectedReturn`. Legacy fields kept optional for backward compat
+  with V1 InputForm until Session 2 migrates the UI.
+
+- **Blended return:** `blendedReturn(state)` = weighted average of per-class returns, weighted by
+  allocation percentages. Falls back to `expectedReturn` when `assets` is absent.
+
+- **Growth asset percentage:** stocks% + realEstate% + min(alternatives%, 20%). The 20% cap on
+  alternatives prevents exotic allocations from inflating the growth score.
+
+- **Asset Quality score:** `computeAssetQualityScore` returns a 0–100 score:
+  - `growthAlignment` (weight 0.7): how close userGrowth is to `targetGrowth = clamp(45 + n, 40, 90)`.
+    Asymmetric: over-aggressive penalised at 1.5× per point gap, under-aggressive at 2×.
+  - `concentrationPenalty` (weight 0.3): penalises any single class above
+    `threshold = clamp(80 + (n − 15), 70, 95)` at 5 points per percentage point over.
+
+- **Allocation actions (V1.5 additions to simulateActions):**
+  - `reduceCashDrag`: applicable when cash > 10%. Moves excess to stocks/RE proportionally.
+  - `shiftBondsToGrowth`: applicable when bonds > 5%. Moves half bonds to stocks/RE.
+  - `rebalanceToTargetGrowth`: always applicable. Sets stocks+RE to targetGrowth%, distributes
+    remainder to bonds/cash proportionally. Alternatives unchanged.
+  - `Diversify`: applicable when any single class > 80%. Reduces to 80%, distributes excess to
+    other non-zero classes (alternatives capped at 20%).
+
+- **Diversify impact calculation:** uses `(newAssetQualityScore − oldAssetQualityScore) / 100`
+  instead of ratio delta, keeping it comparable in magnitude to ratio improvements (~0.01–0.30).
+  All other actions use `newRatio − originalRatio`.
+
 ## Methodology lessons
 
 **Multi-actor math:** When a calculation involves multiple people (or any multiple actors), name each

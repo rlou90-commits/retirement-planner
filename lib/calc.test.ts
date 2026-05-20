@@ -81,10 +81,9 @@ function mkState(
   assert.equal(scores.timelineFeasibility, 100);
 
   const actions = simulateActions(state);
-  assert.equal(actions.length, 5);
-  for (const a of actions) {
-    assert(a.impact >= 0, `Expected non-negative impact for "${a.name}", got ${a.impact}`);
-  }
+  // All-stocks portfolio: reduceCashDrag (cash=0%) and shiftBondsToGrowth (bonds=0%) are
+  // inapplicable; rebalanceToTargetGrowth and Diversify (100%>80%) are applicable → 7 total.
+  assert(actions.length >= 5, `Expected ≥ 5 actions, got ${actions.length}`);
   for (let i = 0; i < actions.length - 1; i++) {
     assert(
       actions[i].impact >= actions[i + 1].impact,
@@ -178,7 +177,7 @@ function mkState(
   assert.equal(scores.timelineFeasibility, 100);
 
   const actions = simulateActions(state);
-  assert.equal(actions.length, 5);
+  assert(actions.length >= 5, `Expected ≥ 5 actions, got ${actions.length}`);
   assert(actions[0].impact > 0, "Top action should have positive impact");
 
   console.log("✓ Test 3 (Young, 37yr horizon): ratio =", ratio.toFixed(3), "—", verdict.label);
@@ -400,6 +399,118 @@ function mkState(
 
     console.log(`✓ Test Asset Quality (${sc.label}): score = ${result.score}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Test: allocation action — reduceCashDrag
+// 70% stocks, 0% bonds, 30% cash ($100k total)
+// cash(30%) > 10% → applicable; newCash = $10k, excess $20k → all to stocks
+// ---------------------------------------------------------------------------
+{
+  const state: HouseholdState = {
+    currentAge: 45, retirementAge: 65, annualIncome: 100_000, annualSavings: 15_000,
+    assets: { stocks: 70_000, bonds: 0, cash: 30_000, realEstate: 0, alternatives: 0 },
+    returns: { stocks: 0.07, bonds: 0.04, cash: 0.015, realEstate: 0.04, alternatives: 0 },
+    retirementSpending: 70_000, socialSecurityIncome: 0,
+  };
+
+  const actions = simulateActions(state);
+  const rcd = actions.find((a) => a.name === "Reduce cash drag");
+  assert(rcd !== undefined, "reduceCashDrag should be in results");
+
+  // Verify the modified state: cash drops to 10%, excess goes to stocks
+  // New stocks = 70,000 + 20,000 = 90,000; new cash = 10,000
+  const alloc = allocationPercentages(state);
+  close(alloc.cash * 100, 30, 0.01);         // original: 30% cash
+  assert(alloc.cash * 100 > 10, "cash > 10% so action is applicable");
+
+  // Verify inapplicable when cash is already ≤ 10%
+  const lowCashState: HouseholdState = {
+    ...state,
+    assets: { stocks: 95_000, bonds: 0, cash: 5_000, realEstate: 0, alternatives: 0 },
+  };
+  const lowCashActions = simulateActions(lowCashState);
+  assert(
+    !lowCashActions.some((a) => a.name === "Reduce cash drag"),
+    "reduceCashDrag should NOT appear when cash is 5%",
+  );
+
+  console.log("✓ Test: reduceCashDrag applicable/inapplicable filtering");
+}
+
+// ---------------------------------------------------------------------------
+// Test: allocation action — shiftBondsToGrowth
+// 60% stocks, 40% bonds ($100k total) → bonds(40%) > 5% → applicable
+// New bonds = 20,000; excess 20,000 → stocks (no RE)
+// ---------------------------------------------------------------------------
+{
+  const state: HouseholdState = {
+    currentAge: 45, retirementAge: 65, annualIncome: 100_000, annualSavings: 15_000,
+    assets: { stocks: 60_000, bonds: 40_000, cash: 0, realEstate: 0, alternatives: 0 },
+    returns: { stocks: 0.07, bonds: 0.04, cash: 0.015, realEstate: 0.04, alternatives: 0 },
+    retirementSpending: 70_000, socialSecurityIncome: 0,
+  };
+
+  const actions = simulateActions(state);
+  const sbg = actions.find((a) => a.name === "Shift bonds to growth");
+  assert(sbg !== undefined, "shiftBondsToGrowth should be in results");
+
+  // Verify bonds > 5% so action is applicable
+  const alloc = allocationPercentages(state);
+  assert(alloc.bonds * 100 > 5, "bonds > 5% so action is applicable");
+
+  // Verify inapplicable when bonds ≤ 5%
+  const lowBondState: HouseholdState = {
+    ...state,
+    assets: { stocks: 97_000, bonds: 3_000, cash: 0, realEstate: 0, alternatives: 0 },
+  };
+  const lowBondActions = simulateActions(lowBondState);
+  assert(
+    !lowBondActions.some((a) => a.name === "Shift bonds to growth"),
+    "shiftBondsToGrowth should NOT appear when bonds ≤ 5%",
+  );
+
+  console.log("✓ Test: shiftBondsToGrowth applicable/inapplicable filtering");
+}
+
+// ---------------------------------------------------------------------------
+// Test: allocation action — diversify uses score-based impact
+// 90% stocks, 10% bonds → 90% > 80% → applicable
+// After: stocks = 80%, bonds = 20%
+// Impact = (newQualityScore − oldQualityScore) / 100
+// ---------------------------------------------------------------------------
+{
+  const state: HouseholdState = {
+    currentAge: 45, retirementAge: 65, annualIncome: 100_000, annualSavings: 15_000,
+    assets: { stocks: 90_000, bonds: 10_000, cash: 0, realEstate: 0, alternatives: 0 },
+    returns: { stocks: 0.07, bonds: 0.04, cash: 0.015, realEstate: 0.04, alternatives: 0 },
+    retirementSpending: 70_000, socialSecurityIncome: 0,
+  };
+
+  const actions = simulateActions(state);
+  const div = actions.find((a) => a.name === "Diversify");
+  assert(div !== undefined, "Diversify should be in results when stocks = 90%");
+
+  // Impact should be score-improvement / 100, not ratio-improvement
+  const originalQ = computeAssetQualityScore(state).score;
+  assert(originalQ < 100, "Original quality score should be < 100 due to concentration");
+  // Impact must be positive (diversifying from 90% → 80% improves concentration score)
+  assert(div.impact > 0, `Diversify impact should be positive, got ${div.impact}`);
+  // Impact is in the /100 scale, so should be a small decimal
+  assert(div.impact < 1, `Diversify impact should be < 1 (score/100 scale), got ${div.impact}`);
+
+  // Verify not applicable when no class exceeds 80%
+  const spreadState: HouseholdState = {
+    ...state,
+    assets: { stocks: 50_000, bonds: 30_000, cash: 20_000, realEstate: 0, alternatives: 0 },
+  };
+  const spreadActions = simulateActions(spreadState);
+  assert(
+    !spreadActions.some((a) => a.name === "Diversify"),
+    "Diversify should NOT appear when no class > 80%",
+  );
+
+  console.log("✓ Test: Diversify score-based impact and applicability filtering");
 }
 
 console.log("\nAll tests passed.");

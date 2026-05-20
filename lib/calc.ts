@@ -336,36 +336,67 @@ export function computeAssetQualityScore(state: HouseholdState): AssetQualityBre
   };
 }
 
+// ---- Allocation action helpers ----------------------------------------------
+
+/** Distribute dollars proportionally to growth assets (stocks + RE).
+ *  If neither is present, all goes to stocks. */
+function distributeToGrowth(
+  s: HouseholdState,
+  dollars: number,
+): { stocks: number; realEstate: number } {
+  const stocks = s.assets?.stocks ?? 0;
+  const re = s.assets?.realEstate ?? 0;
+  const growthBase = stocks + re;
+  if (growthBase === 0) {
+    return { stocks: stocks + dollars, realEstate: re };
+  }
+  return {
+    stocks: stocks + dollars * (stocks / growthBase),
+    realEstate: re + dollars * (re / growthBase),
+  };
+}
+
 export function simulateActions(state: HouseholdState): ActionResult[] {
   const originalRatio = computeSufficiencyRatio(state);
+  const originalQuality = computeAssetQualityScore(state).score;
+  const alloc = allocationPercentages(state);
+  const total = totalAssets(state);
 
   type ActionDef = {
     name: string;
     description: string;
     tooltip?: string;
+    applicable: boolean;
     apply: (s: HouseholdState) => HouseholdState;
+    // Custom impact function; default = newRatio − originalRatio
+    impactFn?: (newState: HouseholdState) => number;
   };
 
   const actionDefs: ActionDef[] = [
+    // ---- Existing 5 actions ------------------------------------------------
     {
       name: "Save more",
       description: "Increase your annual savings by 10%",
+      applicable: true,
       apply: (s) => ({ ...s, annualSavings: s.annualSavings * 1.10 }),
     },
     {
       name: "Save significantly more",
       description: "Increase your annual savings by 25%",
+      applicable: true,
       apply: (s) => ({ ...s, annualSavings: s.annualSavings * 1.25 }),
     },
     {
       // Only delays the primary user's retirement age, not the partner's.
       name: "Delay retirement",
       description: "Push your retirement date back by 3 years",
+      applicable: true,
       apply: (s) => ({ ...s, retirementAge: s.retirementAge + 3 }),
     },
     {
       name: "Reduce retirement spending",
       description: "Lower your target retirement spending by 15%",
+      applicable: true,
       apply: (s) => ({ ...s, retirementSpending: s.retirementSpending * 0.85 }),
     },
     {
@@ -373,26 +404,134 @@ export function simulateActions(state: HouseholdState): ActionResult[] {
       description: "Grow your household income by 10%",
       tooltip:
         "Assumes your savings rate stays the same — i.e., you save the same percentage of your new income",
+      applicable: true,
       apply: (s) => {
         const savingsRate = s.annualSavings / s.annualIncome;
         const newIncome = s.annualIncome * 1.10;
         return { ...s, annualIncome: newIncome, annualSavings: newIncome * savingsRate };
       },
     },
+
+    // ---- V1.5 allocation actions -------------------------------------------
+    {
+      // Applicable when cash > 10% of total. Moves excess to growth assets.
+      name: "Reduce cash drag",
+      description: "Move excess cash to growth assets",
+      applicable: alloc.cash * 100 > 10,
+      apply: (s) => {
+        if (!s.assets) return s;
+        const newCash = total * 0.10;
+        const excess = s.assets.cash - newCash;
+        const { stocks, realEstate } = distributeToGrowth(s, excess);
+        return { ...s, assets: { ...s.assets, stocks, cash: newCash, realEstate } };
+      },
+    },
+    {
+      // Applicable when bonds > 5% of total. Moves half bonds to growth.
+      name: "Shift bonds to growth",
+      description: "Move half of bond holdings to growth assets",
+      applicable: alloc.bonds * 100 > 5,
+      apply: (s) => {
+        if (!s.assets) return s;
+        const halfBonds = s.assets.bonds * 0.5;
+        const { stocks, realEstate } = distributeToGrowth(s, halfBonds);
+        return {
+          ...s,
+          assets: { ...s.assets, stocks, bonds: s.assets.bonds - halfBonds, realEstate },
+        };
+      },
+    },
+    {
+      // Always applicable. Rebalances to age-appropriate growth target.
+      name: "Rebalance to target growth",
+      description: "Adjust portfolio to match your retirement timeline",
+      applicable: total > 0,
+      apply: (s) => {
+        if (!s.assets) return s;
+        const userYears = s.retirementAge - s.currentAge;
+        const partnerYears = s.partner
+          ? s.partner.retirementAge - s.partner.currentAge
+          : userYears;
+        const yrs = Math.max(userYears, partnerYears);
+        const targetGrowthPct = Math.max(40, Math.min(90, 45 + yrs)) / 100;
+
+        const alts = s.assets.alternatives;
+        const newGrowthDollars = total * targetGrowthPct;
+        const nonGrowthPool = Math.max(0, total * (1 - targetGrowthPct) - alts);
+
+        const stocksBase = s.assets.stocks;
+        const reBase = s.assets.realEstate;
+        const growthBase = stocksBase + reBase;
+        const newStocks = growthBase > 0 ? newGrowthDollars * (stocksBase / growthBase) : newGrowthDollars;
+        const newRE = growthBase > 0 ? newGrowthDollars * (reBase / growthBase) : 0;
+
+        const bondsBase = s.assets.bonds;
+        const cashBase = s.assets.cash;
+        const nonGrowthBase = bondsBase + cashBase;
+        const newBonds = nonGrowthBase > 0 ? nonGrowthPool * (bondsBase / nonGrowthBase) : nonGrowthPool * 0.7;
+        const newCash = nonGrowthBase > 0 ? nonGrowthPool * (cashBase / nonGrowthBase) : nonGrowthPool * 0.3;
+
+        return {
+          ...s,
+          assets: { stocks: newStocks, bonds: newBonds, cash: newCash, realEstate: newRE, alternatives: alts },
+        };
+      },
+    },
+    {
+      // Applicable when any single class > 80% of total.
+      // Impact uses Asset Quality score improvement / 100 to stay comparable to ratio impacts.
+      name: "Diversify",
+      description: "Spread concentrated holdings across asset classes",
+      applicable: total > 0 && Math.max(...Object.values(alloc)) * 100 > 80,
+      apply: (s) => {
+        if (!s.assets) return s;
+        const a = allocationPercentages(s);
+        const classes = ["stocks", "bonds", "cash", "realEstate", "alternatives"] as const;
+        let dominantKey: typeof classes[number] = "stocks";
+        let maxPct = 0;
+        for (const k of classes) {
+          if (a[k] > maxPct) { maxPct = a[k]; dominantKey = k; }
+        }
+        const newDominant = total * 0.80;
+        const excess = s.assets[dominantKey] - newDominant;
+        const others = classes.filter((c) => c !== dominantKey && s.assets![c] > 0);
+        const otherTotal = others.reduce((sum, c) => sum + s.assets![c], 0);
+        const newAssets = { ...s.assets, [dominantKey]: newDominant };
+        if (others.length === 0) {
+          const fallback = dominantKey !== "stocks" ? "stocks" : "bonds";
+          newAssets[fallback] += excess;
+        } else {
+          for (const cls of others) {
+            const proportion = s.assets[cls] / otherTotal;
+            let share = excess * proportion;
+            if (cls === "alternatives") {
+              share = Math.min(share, Math.max(0, total * 0.20 - newAssets.alternatives));
+            }
+            newAssets[cls] += share;
+          }
+        }
+        return { ...s, assets: newAssets };
+      },
+      // Diversify impact: Asset Quality score improvement scaled to ratio magnitude
+      impactFn: (newState) => (computeAssetQualityScore(newState).score - originalQuality) / 100,
+    },
   ];
 
-  const results: ActionResult[] = actionDefs.map(({ name, description, tooltip, apply }) => {
-    const newState = apply(state);
-    const newRatio = computeSufficiencyRatio(newState);
-    return {
-      name,
-      description,
-      ...(tooltip !== undefined ? { tooltip } : {}),
-      originalRatio,
-      newRatio,
-      impact: newRatio - originalRatio,
-    };
-  });
+  const results: ActionResult[] = actionDefs
+    .filter((d) => d.applicable)
+    .map(({ name, description, tooltip, apply, impactFn }) => {
+      const newState = apply(state);
+      const newRatio = computeSufficiencyRatio(newState);
+      const impact = impactFn ? impactFn(newState) : newRatio - originalRatio;
+      return {
+        name,
+        description,
+        ...(tooltip !== undefined ? { tooltip } : {}),
+        originalRatio,
+        newRatio,
+        impact,
+      };
+    });
 
   return results.sort((a, b) => b.impact - a.impact);
 }
