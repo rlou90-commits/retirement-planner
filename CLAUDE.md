@@ -127,6 +127,11 @@ it before proceeding.
     Asset Quality score, not sufficiency ratio.
   - Legacy `currentAssets` and `expectedReturn` fields removed from `HouseholdState`; all state flows
     through the new `assets`/`returns` object structure.
+  - Real estate inputs represent equity only (market value − mortgage). Debt is not separately modeled
+    in V1.5 — see V2 roadmap for Financial Stability category which will address debt holistically.
+    Helper text on the Real Estate input prompts users to subtract their mortgage before entering.
+  - Negative-impact actions are displayed (not filtered) to give users an honest picture of which
+    actions would help vs. hurt. Visual treatment: positive impacts in emerald, negative in red.
 
 ## Methodology lessons
 

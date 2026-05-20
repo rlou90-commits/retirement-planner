@@ -32,8 +32,13 @@ const ASSET_LABELS: Record<AssetKey, string> = {
   stocks: "Stocks",
   bonds: "Bonds",
   cash: "Cash",
-  realEstate: "Real Estate",
+  realEstate: "Real Estate (equity only)",
   alternatives: "Alternatives",
+};
+
+const ASSET_HINTS: Partial<Record<AssetKey, string>> = {
+  realEstate:
+    "Home value minus outstanding mortgage. Example: $800k home − $600k mortgage = $200k equity.",
 };
 
 const DEFAULT_RETURN_PCT: Record<AssetKey, string> = {
@@ -260,6 +265,7 @@ function AssetRow({
   showReturn,
   canRemove,
   amountError,
+  hint,
   onAmountChange,
   onReturnChange,
   onRemove,
@@ -270,6 +276,7 @@ function AssetRow({
   showReturn: boolean;
   canRemove: boolean;
   amountError?: string;
+  hint?: string;
   onAmountChange: (v: string) => void;
   onReturnChange: (v: string) => void;
   onRemove?: () => void;
@@ -308,6 +315,7 @@ function AssetRow({
         />
       </div>
       {amountError && <p className="text-xs text-red-500">{amountError}</p>}
+      {!amountError && hint && <p className="text-xs text-gray-500">{hint}</p>}
       {showReturn && (
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400 flex-1">Expected return</span>
@@ -372,7 +380,6 @@ export default function InputForm({
   const [activeAssets, setActiveAssets] = useState<ActiveAssets>({
     stocks: true, bonds: false, cash: false, realEstate: false, alternatives: false,
   });
-  const [showAdvancedReturns, setShowAdvancedReturns] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
   const remainingAssets = OPTIONAL_ASSET_KEYS.filter((k) => !activeAssets[k]);
@@ -564,12 +571,12 @@ export default function InputForm({
               Current Assets
             </p>
             <div className="space-y-4">
-              {/* Stocks — always visible */}
+              {/* Stocks — always visible, return always shown */}
               <AssetRow
                 label={ASSET_LABELS.stocks}
                 amount={assetAmounts.stocks}
                 returnValue={assetReturns.stocks}
-                showReturn={showAdvancedReturns}
+                showReturn
                 canRemove={false}
                 onAmountChange={(v) => handleAssetAmount("stocks", v)}
                 onReturnChange={(v) => handleAssetReturn("stocks", v)}
@@ -582,6 +589,7 @@ export default function InputForm({
                   label={ASSET_LABELS[key]}
                   amount={assetAmounts[key]}
                   returnValue={assetReturns[key]}
+                  hint={ASSET_HINTS[key]}
                   showReturn
                   canRemove
                   onAmountChange={(v) => handleAssetAmount(key, v)}
@@ -639,15 +647,6 @@ export default function InputForm({
                 <span className="font-semibold text-gray-900 tabular-nums">{totalDisplay}</span>
               </div>
 
-              {/* Advanced toggle */}
-              <button
-                type="button"
-                onClick={() => setShowAdvancedReturns((v) => !v)}
-                className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
-              >
-                <span>{showAdvancedReturns ? "▾" : "▸"}</span>
-                Advanced: customize expected returns
-              </button>
             </div>
           </div>
         </div>

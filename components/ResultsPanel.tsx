@@ -133,14 +133,25 @@ function CategoryCard({
 
 // ---- ActionCard ------------------------------------------------------------
 
-function InfoTooltip({ text, wide = false }: { text: string; wide?: boolean }) {
+// position="right" anchors the tooltip to the left edge of the icon (opens leftward),
+// preventing horizontal overflow on right-side elements.
+function InfoTooltip({
+  text,
+  wide = false,
+  position = "right",
+}: {
+  text: string;
+  wide?: boolean;
+  position?: "left" | "right";
+}) {
+  const anchor = position === "right" ? "right-0" : "left-0";
   return (
     <div className="group relative flex-shrink-0">
       <span className="flex h-4 w-4 cursor-default items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 hover:border-gray-400 hover:text-gray-500">
         i
       </span>
       <div
-        className={`pointer-events-none absolute bottom-full left-0 z-10 mb-2 hidden rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg group-hover:block ${
+        className={`pointer-events-none absolute bottom-full ${anchor} z-10 mb-2 hidden rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg group-hover:block ${
           wide ? "w-72" : "w-64"
         }`}
       >
@@ -160,7 +171,10 @@ function ActionCard({
   const { verbPhrase, magnitude, description } = getActionDescription(action.name, state);
   const isIncome = action.name === "Increase income";
   const isDiversify = action.name === "Diversify";
-  const impact = (Math.round(action.impact * 100) / 100).toFixed(2);
+  const roundedImpact = Math.round(action.impact * 100) / 100;
+  const sign = roundedImpact >= 0 ? "+" : "−"; // Unicode minus U+2212
+  const impactDisplay = `${sign}${Math.abs(roundedImpact).toFixed(2)}`;
+  const impactColor = roundedImpact >= 0 ? "text-emerald-600" : "text-red-500";
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
@@ -173,17 +187,21 @@ function ActionCard({
             <span className="text-gray-500">{magnitude}</span>
           </span>
           {isIncome && (
-            <InfoTooltip text="Assumes your savings rate stays constant — i.e., you save the same percentage of your new, higher income." />
+            <InfoTooltip
+              text="Assumes your savings rate stays constant — i.e., you save the same percentage of your new, higher income."
+              position="right"
+            />
           )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
-          <p className="text-2xl font-semibold tabular-nums text-emerald-600">
-            +{impact}
+          <p className={`text-2xl font-semibold tabular-nums ${impactColor}`}>
+            {impactDisplay}
           </p>
           {isDiversify && (
             <InfoTooltip
               text="This impact reflects an Asset Quality score improvement, not a sufficiency ratio change."
               wide
+              position="right"
             />
           )}
         </div>
