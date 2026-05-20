@@ -178,9 +178,13 @@ function ActionCard({
 // ---- AssumptionCallout -----------------------------------------------------
 
 function AssumptionCallout({
+  personTimelinePhrase,
+  yearsToRetirement,
   laterAge,
   onDismiss,
 }: {
+  personTimelinePhrase: string;
+  yearsToRetirement: number;
   laterAge: number;
   onDismiss: () => void;
 }) {
@@ -189,11 +193,12 @@ function AssumptionCallout({
       <div className="flex items-start gap-3">
         <div className="flex-1">
           <p className="text-sm font-medium text-amber-900">
-            Savings and spending are assumed constant until age {laterAge}.
+            {personTimelinePhrase} retirement timeline ({yearsToRetirement} years from now) governs this calculation.
           </p>
           <p className="mt-1 text-xs text-amber-700">
-            If household circumstances change when the first partner retires, adjust
-            &ldquo;Annual Savings&rdquo; above to reflect the new rate.
+            Savings and spending are assumed constant until age {laterAge}. If household
+            circumstances change when the first partner retires, adjust &ldquo;Annual
+            Savings&rdquo; above to reflect the new rate.
           </p>
         </div>
         <button
@@ -242,15 +247,18 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
   const scores = computeCategoryScores(state);
   const actions = simulateActions(state);
 
-  // Show callout when partner exists and the two timelines differ.
-  const userYears = state.retirementAge - state.currentAge;
-  const partnerYears = state.partner
-    ? state.partner.retirementAge - state.partner.currentAge
-    : userYears;
-  const showCallout = !calloutDismissed && !!state.partner && userYears !== partnerYears;
+  // Callout shows whenever a partner is present.
+  const showCallout = !calloutDismissed && !!state.partner;
   const laterRetAge = state.partner
     ? Math.max(state.retirementAge, state.partner.retirementAge)
     : state.retirementAge;
+
+  // The younger person's timeline governs the accumulation period.
+  const userIsYounger = !state.partner || state.currentAge <= state.partner.currentAge;
+  const personTimelinePhrase = userIsYounger ? "Your" : "Your partner's";
+  const yearsToRetirement = userIsYounger
+    ? state.retirementAge - state.currentAge
+    : state.partner!.retirementAge - state.partner!.currentAge;
 
   return (
     <div className="space-y-4">
@@ -317,9 +325,11 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
         </div>
       </div>
 
-      {/* Assumption callout — only when partner timelines differ */}
+      {/* Assumption callout — shown whenever a partner is present */}
       {showCallout && (
         <AssumptionCallout
+          personTimelinePhrase={personTimelinePhrase}
+          yearsToRetirement={yearsToRetirement}
           laterAge={laterRetAge}
           onDismiss={() => setCalloutDismissed(true)}
         />

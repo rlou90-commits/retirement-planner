@@ -74,12 +74,15 @@ it before proceeding.
   circumstances change. Years in retirement calculated as
   `max(1, 90 − laterRetirementAge)` instead of fixed 25×.
 
-  Note on callout logic: The assumption callout appears when retirement
-  *timelines* differ (i.e., `yearsToRetirement_A ≠ yearsToRetirement_B`),
-  not when retirement ages differ. This is because the assumption
-  violation occurs specifically when one partner retires while the other
-  is still working and saving. Absolute retirement ages (65 vs 70) can
-  differ while timelines remain aligned (both 20 years away).
+  V1.1 callout shows whenever a partner is present. It explains:
+  (a) Which person's retirement timeline governs the accumulation
+  calculation (the younger person), and (b) the constant-spending
+  assumption and when to adjust.
+
+  Calculation uses younger person's years-to-retirement for n
+  (accumulation period), older person's age for Savings Strength
+  benchmarking, and later retirement age for years-in-retirement
+  (distribution period).
 
 ## Scope guardrails
 
