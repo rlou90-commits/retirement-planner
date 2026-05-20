@@ -74,15 +74,26 @@ it before proceeding.
   circumstances change. Years in retirement calculated as
   `max(1, 90 − laterRetirementAge)` instead of fixed 25×.
 
-  V1.1 callout shows whenever a partner is present. It explains:
-  (a) Which person's retirement timeline governs the accumulation
-  calculation (the younger person), and (b) the constant-spending
-  assumption and when to adjust.
+  V1.1 two-person household math:
 
-  Calculation uses younger person's years-to-retirement for n
-  (accumulation period), older person's age for Savings Strength
-  benchmarking, and later retirement age for years-in-retirement
-  (distribution period).
+  - Accumulation period (n): max(userRetirementAge − userCurrentAge,
+    partnerRetirementAge − partnerCurrentAge) = time until the
+    later-retiring person retires. The household saves at the current
+    rate for this entire period.
+
+  - Distribution period: max(1, 90 − laterRetirementAge) = years from
+    the last person's retirement until household plan ends at age 90.
+
+  - Savings Strength benchmark: uses olderCurrentAge (max of both
+    partners' current ages) for a conservative comparison.
+
+  - Callout: always shows when a partner is present, explaining whose
+    retirement timeline governs the calculation (the one with the longer
+    remaining accumulation period) and reminding users of the
+    constant-savings assumption.
+
+  - Income drop when first partner retires is not modeled — users adjust
+    "Annual Savings" if circumstances change.
 
 ## Scope guardrails
 

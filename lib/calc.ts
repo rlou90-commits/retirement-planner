@@ -76,9 +76,13 @@ function laterRetirementAge(state: HouseholdState): number {
 }
 
 export function computeFV(state: HouseholdState): number {
-  const older = olderCurrentAge(state);
-  const later = laterRetirementAge(state);
-  const n = later - older;
+  // n = time until the later-retiring person retires; the household saves at the
+  // current rate for this entire period.
+  const userYears = state.retirementAge - state.currentAge;
+  const partnerYears = state.partner
+    ? state.partner.retirementAge - state.partner.currentAge
+    : userYears;
+  const n = Math.max(userYears, partnerYears);
   const { annualSavings, currentAssets, expectedReturn: r } = state;
   if (r === 0) return currentAssets + annualSavings * n;
   const growth = Math.pow(1 + r, n);
@@ -106,9 +110,14 @@ export function getVerdict(ratio: number): Verdict {
 export function computeCategoryScores(state: HouseholdState): CategoryScores {
   const { annualIncome, annualSavings, currentAssets, expectedReturn: r } = state;
 
+  // Same accumulation period as computeFV.
+  const userYears = state.retirementAge - state.currentAge;
+  const partnerYears = state.partner
+    ? state.partner.retirementAge - state.partner.currentAge
+    : userYears;
+  const n = Math.max(userYears, partnerYears);
+
   const older = olderCurrentAge(state);
-  const later = laterRetirementAge(state);
-  const n = later - older;
 
   // Savings Strength: benchmark against the older partner's age.
   const benchmarkMultiple = getBenchmarkMultiple(older);

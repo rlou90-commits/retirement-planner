@@ -193,12 +193,11 @@ function AssumptionCallout({
       <div className="flex items-start gap-3">
         <div className="flex-1">
           <p className="text-sm font-medium text-amber-900">
-            {personTimelinePhrase} retirement timeline ({yearsToRetirement} years from now) governs this calculation.
+            Your retirement readiness is calculated based on {personTimelinePhrase} retirement timeline ({yearsToRetirement} years from now).
           </p>
           <p className="mt-1 text-xs text-amber-700">
             Savings and spending are assumed constant until age {laterAge}. If household
-            circumstances change when the first partner retires, adjust &ldquo;Annual
-            Savings&rdquo; above to reflect the new rate.
+            circumstances change, adjust &ldquo;Annual Savings&rdquo; above to reflect the new rate.
           </p>
         </div>
         <button
@@ -253,12 +252,14 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
     ? Math.max(state.retirementAge, state.partner.retirementAge)
     : state.retirementAge;
 
-  // The younger person's timeline governs the accumulation period.
-  const userIsYounger = !state.partner || state.currentAge <= state.partner.currentAge;
-  const personTimelinePhrase = userIsYounger ? "Your" : "Your partner's";
-  const yearsToRetirement = userIsYounger
-    ? state.retirementAge - state.currentAge
-    : state.partner!.retirementAge - state.partner!.currentAge;
+  // The longer remaining timeline governs n — whichever person retires later.
+  const userYears = state.retirementAge - state.currentAge;
+  const partnerYears = state.partner
+    ? state.partner.retirementAge - state.partner.currentAge
+    : userYears;
+  const userHasLongerTimeline = userYears >= partnerYears;
+  const personTimelinePhrase = userHasLongerTimeline ? "your" : "your partner's";
+  const yearsToRetirement = userHasLongerTimeline ? userYears : partnerYears;
 
   return (
     <div className="space-y-4">
