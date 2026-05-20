@@ -2,12 +2,13 @@ import {
   computeSufficiencyRatio,
   computeYearsToCloseGap,
   getBenchmarkMultiple,
+  totalAssets,
 } from "./calc";
 import type { HouseholdState } from "./calc";
 
 export function getSavingsStrengthExplanation(state: HouseholdState): string {
-  const { currentAssets, annualIncome, currentAge } = state;
-  const savingsMultiple = currentAssets / annualIncome;
+  const { annualIncome, currentAge } = state;
+  const savingsMultiple = totalAssets(state) / annualIncome;
   const benchmark = getBenchmarkMultiple(currentAge);
   const sm = savingsMultiple.toFixed(1);
   const bm = benchmark.toFixed(1);

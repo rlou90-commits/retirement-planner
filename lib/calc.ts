@@ -1,5 +1,35 @@
 // All monetary values in dollars. All rates/returns as decimals (0.07 = 7%).
 
+// ---- V1.5 asset types -------------------------------------------------------
+
+export type AssetClasses = {
+  stocks: number;
+  bonds: number;
+  cash: number;
+  realEstate: number;
+  alternatives: number;
+};
+
+export type AssetReturns = {
+  stocks: number;      // default 0.07
+  bonds: number;       // default 0.04
+  cash: number;        // default 0.015
+  realEstate: number;  // default 0.04
+  alternatives: number;// default 0.00
+};
+
+const DEFAULT_RETURNS: AssetReturns = {
+  stocks: 0.07,
+  bonds: 0.04,
+  cash: 0.015,
+  realEstate: 0.04,
+  alternatives: 0.00,
+};
+
+// ---- HouseholdState ---------------------------------------------------------
+// V1.5 adds assets/returns; V1 legacy fields kept for backward compat until
+// Session 2 updates the UI layer.
+
 export type HouseholdState = {
   currentAge: number;
   retirementAge: number;
@@ -9,10 +39,17 @@ export type HouseholdState = {
   };
   annualIncome: number;
   annualSavings: number;
-  currentAssets: number;
+
+  // V1.5 asset breakdown (preferred)
+  assets?: AssetClasses;
+  returns?: AssetReturns;
+
+  // V1 legacy fallbacks (used by InputForm until Session 2 UI migration)
+  currentAssets?: number;
+  expectedReturn?: number;
+
   retirementSpending: number;
-  expectedReturn: number;       // decimal, e.g. 0.07 for 7%
-  socialSecurityIncome: number; // dollars/year; 0 if none
+  socialSecurityIncome: number;
 };
 
 export type VerdictColor = "green" | "light-green" | "amber" | "red";
@@ -37,7 +74,68 @@ export type ActionResult = {
   impact: number;
 };
 
-// Age → income multiple benchmarks from PRD §8.1
+// ---- V1.5 asset helpers -----------------------------------------------------
+
+/** Total dollars across all asset classes. Falls back to legacy currentAssets. */
+export function totalAssets(state: HouseholdState): number {
+  if (state.assets) {
+    return (
+      state.assets.stocks +
+      state.assets.bonds +
+      state.assets.cash +
+      state.assets.realEstate +
+      state.assets.alternatives
+    );
+  }
+  return state.currentAssets ?? 0;
+}
+
+/** Decimal allocation per class. All zeros when total is 0. */
+export function allocationPercentages(state: HouseholdState): AssetClasses {
+  const total = totalAssets(state);
+  if (total === 0 || !state.assets) {
+    return { stocks: 0, bonds: 0, cash: 0, realEstate: 0, alternatives: 0 };
+  }
+  return {
+    stocks: state.assets.stocks / total,
+    bonds: state.assets.bonds / total,
+    cash: state.assets.cash / total,
+    realEstate: state.assets.realEstate / total,
+    alternatives: state.assets.alternatives / total,
+  };
+}
+
+/**
+ * Weighted-average return. Falls back to legacy expectedReturn when no asset
+ * breakdown is present. When total assets is 0, defaults to stocks return.
+ */
+export function blendedReturn(state: HouseholdState): number {
+  if (!state.assets) return state.expectedReturn ?? DEFAULT_RETURNS.stocks;
+  const total = totalAssets(state);
+  const r = state.returns ?? DEFAULT_RETURNS;
+  if (total === 0) return r.stocks;
+  const alloc = allocationPercentages(state);
+  return (
+    alloc.stocks * r.stocks +
+    alloc.bonds * r.bonds +
+    alloc.cash * r.cash +
+    alloc.realEstate * r.realEstate +
+    alloc.alternatives * r.alternatives
+  );
+}
+
+/**
+ * Percentage of portfolio in growth assets, with alternatives capped at 20%.
+ * growth = stocks% + realEstate% + min(alternatives%, 20%)
+ * Returns 0-100 (not a decimal).
+ */
+export function growthAssetPercentage(state: HouseholdState): number {
+  const alloc = allocationPercentages(state);
+  return (alloc.stocks + alloc.realEstate + Math.min(alloc.alternatives, 0.20)) * 100;
+}
+
+// ---- Age → income multiple benchmarks from PRD §8.1 -------------------------
+
 const SAVINGS_BENCHMARKS: [number, number][] = [
   [30, 1],
   [35, 2],
@@ -62,7 +160,8 @@ export function getBenchmarkMultiple(age: number): number {
   return 8;
 }
 
-// Two-person household helpers — fall back to single-person values when no partner.
+// ---- Two-person household helpers -------------------------------------------
+
 function olderCurrentAge(state: HouseholdState): number {
   return state.partner
     ? Math.max(state.currentAge, state.partner.currentAge)
@@ -75,22 +174,25 @@ function laterRetirementAge(state: HouseholdState): number {
     : state.retirementAge;
 }
 
+// ---- Core calculations -------------------------------------------------------
+
 export function computeFV(state: HouseholdState): number {
-  // n = time until the later-retiring person retires; the household saves at the
-  // current rate for this entire period.
+  // n = time until the later-retiring person retires; the household saves at
+  // the current rate for this entire period.
   const userYears = state.retirementAge - state.currentAge;
   const partnerYears = state.partner
     ? state.partner.retirementAge - state.partner.currentAge
     : userYears;
   const n = Math.max(userYears, partnerYears);
-  const { annualSavings, currentAssets, expectedReturn: r } = state;
-  if (r === 0) return currentAssets + annualSavings * n;
+  const assets = totalAssets(state);
+  const r = blendedReturn(state);
+  if (r === 0) return assets + state.annualSavings * n;
   const growth = Math.pow(1 + r, n);
-  return currentAssets * growth + annualSavings * (growth - 1) / r;
+  return assets * growth + state.annualSavings * (growth - 1) / r;
 }
 
 export function computeRequiredCapital(state: HouseholdState): number {
-  // yearsInRetirement is dynamic: assumes planning to age 90.
+  // Dynamic years in retirement: household plans to age 90.
   // Single-person retiring at 65 → max(1, 90-65) = 25, matching V1 behaviour.
   const yearsInRetirement = Math.max(1, 90 - laterRetirementAge(state));
   return (state.retirementSpending - state.socialSecurityIncome) * yearsInRetirement;
@@ -108,7 +210,7 @@ export function getVerdict(ratio: number): Verdict {
 }
 
 export function computeCategoryScores(state: HouseholdState): CategoryScores {
-  const { annualIncome, annualSavings, currentAssets, expectedReturn: r } = state;
+  const { annualIncome, annualSavings } = state;
 
   // Same accumulation period as computeFV.
   const userYears = state.retirementAge - state.currentAge;
@@ -116,21 +218,22 @@ export function computeCategoryScores(state: HouseholdState): CategoryScores {
     ? state.partner.retirementAge - state.partner.currentAge
     : userYears;
   const n = Math.max(userYears, partnerYears);
-
+  const r = blendedReturn(state);
+  const assets = totalAssets(state);
   const older = olderCurrentAge(state);
 
   // Savings Strength: benchmark against the older partner's age.
   const benchmarkMultiple = getBenchmarkMultiple(older);
   const savingsStrength = Math.min(
     100,
-    ((currentAssets / annualIncome) / benchmarkMultiple) * 100,
+    ((assets / annualIncome) / benchmarkMultiple) * 100,
   );
 
   // Cash Flow Power: savings rate vs 20% target.
   const savingsRate = annualSavings / annualIncome;
   const cashFlowPower = Math.min(100, (savingsRate / 0.20) * 100);
 
-  // Timeline Feasibility: how hard it would be to close the gap given remaining time.
+  // Timeline Feasibility: how hard it would be to close the gap given time.
   const ratio = computeSufficiencyRatio(state);
   let timelineFeasibility: number;
   if (ratio >= 1.0) {
@@ -171,8 +274,6 @@ export function simulateActions(state: HouseholdState): ActionResult[] {
     },
     {
       // Only delays the primary user's retirement age, not the partner's.
-      // In two-person mode this extends the savings horizon only when the
-      // user is the later-retiring partner.
       name: "Delay retirement",
       description: "Push your retirement date back by 3 years",
       apply: (s) => ({ ...s, retirementAge: s.retirementAge + 3 }),
@@ -215,18 +316,20 @@ export function simulateActions(state: HouseholdState): ActionResult[] {
 // reach requiredCapital, solving FV(n) = requiredCapital for n.
 export function computeYearsToCloseGap(state: HouseholdState): number {
   const required = computeRequiredCapital(state);
-  const { currentAssets, annualSavings, expectedReturn: r } = state;
+  const assets = totalAssets(state);
+  const r = blendedReturn(state);
+  const { annualSavings } = state;
 
   if (r === 0) {
     if (annualSavings <= 0) return Infinity;
-    return (required - currentAssets) / annualSavings;
+    return (required - assets) / annualSavings;
   }
 
-  // FV(n) = (currentAssets + pmt/r)*(1+r)^n - pmt/r = required
-  // => n = log((required + pmt/r) / (currentAssets + pmt/r)) / log(1+r)
+  // FV(n) = (assets + pmt/r)*(1+r)^n - pmt/r = required
+  // => n = log((required + pmt/r) / (assets + pmt/r)) / log(1+r)
   const pmt_r = annualSavings / r;
   const numerator = required + pmt_r;
-  const denominator = currentAssets + pmt_r;
+  const denominator = assets + pmt_r;
 
   if (denominator <= 0 || numerator <= 0) return Infinity;
 
