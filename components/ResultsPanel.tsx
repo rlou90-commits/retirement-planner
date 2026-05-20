@@ -14,6 +14,7 @@ import {
   getSavingsStrengthExplanation,
   getCashFlowPowerExplanation,
   getTimelineFeasibilityExplanation,
+  getAssetQualityExplanation,
 } from "@/lib/categoryExplanations";
 import { getActionDescription } from "@/lib/actionDescriptions";
 
@@ -132,6 +133,23 @@ function CategoryCard({
 
 // ---- ActionCard ------------------------------------------------------------
 
+function InfoTooltip({ text, wide = false }: { text: string; wide?: boolean }) {
+  return (
+    <div className="group relative flex-shrink-0">
+      <span className="flex h-4 w-4 cursor-default items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 hover:border-gray-400 hover:text-gray-500">
+        i
+      </span>
+      <div
+        className={`pointer-events-none absolute bottom-full left-0 z-10 mb-2 hidden rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg group-hover:block ${
+          wide ? "w-72" : "w-64"
+        }`}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
 function ActionCard({
   action,
   state,
@@ -141,6 +159,7 @@ function ActionCard({
 }) {
   const { verbPhrase, magnitude, description } = getActionDescription(action.name, state);
   const isIncome = action.name === "Increase income";
+  const isDiversify = action.name === "Diversify";
   const impact = (Math.round(action.impact * 100) / 100).toFixed(2);
 
   return (
@@ -154,19 +173,20 @@ function ActionCard({
             <span className="text-gray-500">{magnitude}</span>
           </span>
           {isIncome && (
-            <div className="group relative flex-shrink-0">
-              <span className="flex h-4 w-4 cursor-default items-center justify-center rounded-full border border-gray-300 text-[10px] text-gray-400 hover:border-gray-400 hover:text-gray-500">
-                i
-              </span>
-              <div className="pointer-events-none absolute bottom-full left-0 z-10 mb-2 hidden w-64 rounded-lg bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg group-hover:block">
-                Assumes your savings rate stays constant — i.e., you save the same percentage of your new, higher income.
-              </div>
-            </div>
+            <InfoTooltip text="Assumes your savings rate stays constant — i.e., you save the same percentage of your new, higher income." />
           )}
         </div>
-        <p className="flex-shrink-0 text-2xl font-semibold tabular-nums text-emerald-600">
-          +{impact}
-        </p>
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <p className="text-2xl font-semibold tabular-nums text-emerald-600">
+            +{impact}
+          </p>
+          {isDiversify && (
+            <InfoTooltip
+              text="This impact reflects an Asset Quality score improvement, not a sufficiency ratio change."
+              wide
+            />
+          )}
+        </div>
       </div>
 
       {/* Description */}
@@ -236,6 +256,7 @@ function Placeholder() {
 
 export default function ResultsPanel({ state }: { state: HouseholdState }) {
   const [calloutDismissed, setCalloutDismissed] = useState(false);
+  const [showAllActions, setShowAllActions] = useState(false);
 
   if (!isValidState(state)) return <Placeholder />;
 
@@ -336,8 +357,8 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
         />
       )}
 
-      {/* Section 3: Category Cards */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* Section 3: Category Cards — 2×2 grid on desktop */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CategoryCard
           name="Savings Strength"
           score={scores.savingsStrength}
@@ -356,14 +377,28 @@ export default function ResultsPanel({ state }: { state: HouseholdState }) {
           tooltip="Whether your retirement timeline gives your savings enough room to close the gap."
           explanation={getTimelineFeasibilityExplanation(state)}
         />
+        <CategoryCard
+          name="Asset Quality"
+          score={scores.assetQuality}
+          tooltip={getAssetQualityExplanation(state).tooltip}
+          explanation={getAssetQualityExplanation(state).sentence}
+        />
       </div>
 
       {/* Section 4: Action Cards */}
       <div className="space-y-3">
-        {actions.slice(0, 3).map((action) => (
+        {actions.slice(0, showAllActions ? actions.length : 3).map((action) => (
           <ActionCard key={action.name} action={action} state={state} />
         ))}
       </div>
+      {actions.length > 3 && (
+        <button
+          onClick={() => setShowAllActions((v) => !v)}
+          className="text-sm text-blue-600 underline underline-offset-2 hover:text-blue-800"
+        >
+          {showAllActions ? "Show top 3" : `Show all ${actions.length} actions`}
+        </button>
+      )}
     </div>
   );
 }

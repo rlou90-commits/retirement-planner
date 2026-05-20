@@ -88,7 +88,7 @@ it before proceeding.
   - Income drop when first partner retires is not modeled — users adjust
     "Annual Savings" if circumstances change.
 
-## V1.5 math notes (Session 1 — lib only; UI update in Session 2)
+## V1.5 notes (Sessions 1 + 2 complete)
 
 - **Asset model:** `HouseholdState` now carries `assets: AssetClasses` and `returns: AssetReturns`
   instead of `currentAssets` / `expectedReturn`. Legacy fields kept optional for backward compat
@@ -118,6 +118,16 @@ it before proceeding.
   instead of ratio delta, keeping it comparable in magnitude to ratio improvements (~0.01–0.30).
   All other actions use `newRatio − originalRatio`.
 
+- **V1.5 UI:**
+  - Asset Quality is the fourth category card, shown in a 2×2 grid on desktop.
+  - Current Assets section is stocks-default with a dropdown to add bonds/cash/real estate/alternatives.
+    Each added asset shows an inline expected return field; stocks return is hidden behind "Advanced" toggle.
+  - "Show all actions" toggle in ResultsPanel exposes the full ranked list (5–9 actions depending on
+    which allocation actions apply). Diversify action carries a tooltip explaining its impact reflects
+    Asset Quality score, not sufficiency ratio.
+  - Legacy `currentAssets` and `expectedReturn` fields removed from `HouseholdState`; all state flows
+    through the new `assets`/`returns` object structure.
+
 ## Methodology lessons
 
 **Multi-actor math:** When a calculation involves multiple people (or any multiple actors), name each
@@ -129,6 +139,12 @@ Example: V1.1 originally used `n = laterRetirementAge − olderCurrentAge` for t
 period. Both terms looked reasonable, but they often belonged to different people, producing a number
 with no real-world meaning. The correct formula is `n = max(userYears, partnerYears)` — the time until
 the later-retiring person actually retires.
+
+**Score-vs-ratio impact translation:** When introducing actions whose primary effect is on a category
+score rather than the headline metric, translate the score improvement to a comparable magnitude
+rather than excluding the action from rankings. V1.5's Diversify action uses `(newScore − oldScore) / 100`,
+which lands score improvements in the same range as ratio improvements. The visual treatment is identical;
+a tooltip flags the conceptual difference for users who want detail.
 
 **Testing simplifications:** Test edge cases that intentionally break your simplifying assumptions,
 not just average cases. A formula that gives "close-enough" answers for typical inputs can be
